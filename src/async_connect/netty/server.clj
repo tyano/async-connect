@@ -5,6 +5,7 @@
            [io.netty.bootstrap ServerBootstrap]
            [io.netty.util ReferenceCountUtil]
            [io.netty.channel
+              Channel
               ChannelFuture
               ChannelInitializer
               ChannelOption
@@ -78,6 +79,18 @@
   :args (s/cat :read-channel async-channel?, :write-channel async-channel?, :config ::config)
   :ret  any?)
 
+(defn write-if-possible
+  [^ChannelHandlerContext ctx, flush?, data, ^ChannelPromise promise]
+  (let [netty-ch ^Channel (.channel ctx)]
+    (loop [writable? (.isWritable netty-ch)]
+      (if writable?
+        (if flush?
+          (.writeAndFlush ctx data promise)
+          (.write ctx data promise))
+        (do
+          (Thread/sleep 200)
+          (recur (.isWritable netty-ch)))))))
+
 (defn run-server
   [read-channel,
    write-channel,
@@ -100,10 +113,7 @@
       (do
         (s/assert ::writedata data)
         (thread
-          (let [void-promise (.voidPromise context)]
-            (if (or flush? close?)
-              (.writeAndFlush context message promise)
-              (.write context message promise)))
+          (write-if-possible context (or flush? close?) message promise)
           (when close?
             (.close context)))
         (recur))
