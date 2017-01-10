@@ -11,6 +11,7 @@
               EventLoopGroup
               ChannelHandlerContext
               ChannelInboundHandlerAdapter
+              ChannelPromise
               ChannelHandler]
            [io.netty.channel.nio
               NioEventLoopGroup]
@@ -65,12 +66,11 @@
       (.printStackTrace th)
       (.close ctx))))
 
-(defn- init-channel-fn
-  [read-channel]
-  (fn [netty-ch]
-    (.. netty-ch
-      (pipeline)
-      (addLast (into-array ChannelHandler [(default-handler read-channel)])))))
+(defn default-channel-initializer
+  [^SocketChannel netty-ch read-ch write-ch config]
+  (.. netty-ch
+    (pipeline)
+    (addLast (into-array ChannelHandler [(default-handler read-ch)]))))
 
 (s/fdef run-server
   :args (s/cat :read-channel async-channel?, :write-channel async-channel?, :config ::config)
@@ -82,14 +82,14 @@
    {:keys [:server.config/port
            :server.config/channel-initializer]
       :or {port 8080
-           channel-initializer (init-channel-fn read-channel)}
+           channel-initializer default-channel-initializer}
       :as config}]
 
   (assert read-channel "read-channel must not be nil.")
   (assert write-channel "write-channel must not be nil.")
 
   (go-loop []
-    (if-some [{:keys [context message flush? close?] :or {flush? false, close? false} :as data} (<! write-channel)]
+    (if-some [{:keys [^ChannelHandlerContext context message flush? close?] :or {flush? false, close? false} :as data} (<! write-channel)]
       (do
         (s/assert ::writedata data)
         (thread
@@ -113,7 +113,7 @@
               (initChannel
                 [^SocketChannel ch]
                 (when channel-initializer
-                  (channel-initializer ch)))))
+                  (channel-initializer ch read-channel write-channel config)))))
           (option ChannelOption/SO_BACKLOG (int 128))
           (childOption ChannelOption/SO_KEEPALIVE true))
         (let [f ^ChannelFuture (.. bootstrap (bind (int port)) (sync))]
