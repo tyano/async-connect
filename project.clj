@@ -8,6 +8,11 @@
                  [org.clojure/tools.logging "0.3.1"]
                  [org.clojure/core.async "0.2.395"]]
 
-  :profiles {:dev {:dependencies [[ch.qos.logback/logback-classic "1.1.8"]]}}
+  :profiles {:dev
+              {:dependencies [[ch.qos.logback/logback-classic "1.1.8"]]
+               :resource-paths ["resources-dev"]}
+             :release
+              {:resource-paths ["resources-release"]}}
+
   :main async-connect.core
   :aot [async-connect.core])
