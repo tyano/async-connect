@@ -1,6 +1,6 @@
 (ns async-connect.netty.server
   (:require [clojure.spec :as s]
-            [clojure.core.async :refer [>! >!! <! go-loop thread]])
+            [clojure.core.async :refer [>! >!! <! go-loop thread chan sub unsub pub close!]])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
            [io.netty.bootstrap ServerBootstrap]
            [io.netty.util ReferenceCountUtil]
@@ -49,36 +49,6 @@
              :server.writedata/close?
              :netty/channel-promise]))
 
-
-(defn default-channel-read
-  [^ChannelHandlerContext ctx, ^Object msg, channel]
-  (try
-    (>!! channel {:context ctx, :message msg})
-    (finally
-      (ReferenceCountUtil/releaseLater ^ByteBuf msg))))
-
-(defn default-handler
-  [channel]
-  (proxy [ChannelInboundHandlerAdapter] []
-    (channelRead
-      [^ChannelHandlerContext ctx, ^Object msg]
-      (default-channel-read ctx msg channel))
-
-    (exceptionCaught
-      [^ChannelHandlerContext ctx, ^Throwable th]
-      (.printStackTrace th)
-      (.close ctx))))
-
-(defn default-channel-initializer
-  [^SocketChannel netty-ch read-ch write-ch config]
-  (.. netty-ch
-    (pipeline)
-    (addLast (into-array ChannelHandler [(default-handler read-ch)]))))
-
-(s/fdef run-server
-  :args (s/cat :read-channel async-channel?, :write-channel async-channel?, :config ::config)
-  :ret  any?)
-
 (defn write-if-possible
   [^ChannelHandlerContext ctx, flush?, data, ^ChannelPromise promise]
   (let [netty-ch ^Channel (.channel ctx)]
@@ -91,33 +61,85 @@
           (Thread/sleep 200)
           (recur (.isWritable netty-ch)))))))
 
+(defn default-channel-active
+  [^ChannelHandlerContext ctx, publication, sub-ch]
+  (sub publication (.name ctx) sub-ch)
+  (thread
+    (loop []
+      (when-some [{:keys [^ChannelHandlerContext context message flush? close? ^ChannelPromise promise]
+                   :or {flush? false
+                        close? false
+                        promise ^ChannelPromise (.voidPromise context)}
+                   :as data}
+                  (<! sub-ch)]
+        (s/assert ::writedata data)
+        (write-if-possible context (or flush? close?) message promise)
+        (when close?
+          (.close context))
+        (recur)))))
+
+(defn default-channel-inactive
+  [^ChannelHandlerContext ctx, publication, sub-ch]
+  (unsub publication (.name ctx) sub-ch)
+  (close! sub-ch))
+
+(defn default-channel-read
+  [^ChannelHandlerContext ctx, ^Object msg, read-ch]
+  (try
+    (>!! read-ch {:context ctx, :message msg})
+    (finally
+      (ReferenceCountUtil/releaseLater ^ByteBuf msg))))
+
+(defn make-default-handler
+  [read-ch write-publication]
+  (let [sub-ch-ref (atom nil)]
+    (proxy [ChannelInboundHandlerAdapter] []
+      (channelRead
+        [^ChannelHandlerContext ctx, ^Object msg]
+        (default-channel-read ctx msg read-ch))
+
+      (channelActive
+        [^ChannelHandlerContext ctx]
+        (let [sub-ch (chan)]
+          (reset! sub-ch-ref sub-ch)
+          (default-channel-active ctx write-publication sub-ch)))
+
+      (channelInactive
+        [^ChannelHandlerContext ctx]
+        (default-channel-inactive ctx write-publication @sub-ch-ref))
+
+      (exceptionCaught
+        [^ChannelHandlerContext ctx, ^Throwable th]
+        (.printStackTrace th)
+        (.close ctx)))))
+
+(defn make-write-publication
+  [write-ch]
+  (pub write-ch #(.name (:context %))))
+
+(defn make-channel-initializer
+  [write-ch]
+  (let [publication (make-write-publication write-ch)]
+    (fn [^SocketChannel netty-ch read-ch config]
+      (.. netty-ch
+        (pipeline)
+        (addLast (into-array ChannelHandler [(make-default-handler read-ch publication)]))))))
+
+(s/fdef run-server
+  :args (s/cat :read-channel async-channel?, :write-channel async-channel?, :config ::config)
+  :ret  any?)
+
 (defn run-server
   [read-channel,
    write-channel,
    {:keys [:server.config/port
            :server.config/channel-initializer]
       :or {port 8080
-           channel-initializer default-channel-initializer}
+           channel-initializer (make-channel-initializer write-channel)}
       :as config}]
 
   (assert read-channel "read-channel must not be nil.")
   (assert write-channel "write-channel must not be nil.")
-
-  (go-loop []
-    (if-some [{:keys [^ChannelHandlerContext context message flush? close? ^ChannelPromise promise]
-                 :or {flush? false
-                      close? false
-                      promise ^ChannelPromise (.voidPromise context)}
-                 :as data}
-                (<! write-channel)]
-      (do
-        (s/assert ::writedata data)
-        (thread
-          (write-if-possible context (or flush? close?) message promise)
-          (when close?
-            (.close context)))
-        (recur))
-      (throw (IllegalStateException. "The global channel is closed. You should not close the global channel."))))
 
   (let [boss-group ^EventLoopGroup (NioEventLoopGroup.)
         worker-group ^EventLoopGroup (NioEventLoopGroup.)]
@@ -131,7 +153,7 @@
               (initChannel
                 [^SocketChannel ch]
                 (when channel-initializer
-                  (channel-initializer ch read-channel write-channel config)))))
+                  (channel-initializer ch read-channel config)))))
           (option ChannelOption/SO_BACKLOG (int 128))
           (childOption ChannelOption/SO_KEEPALIVE true))
         (let [f ^ChannelFuture (.. bootstrap (bind (int port)) (sync))]
