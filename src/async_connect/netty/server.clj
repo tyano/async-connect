@@ -1,6 +1,7 @@
 (ns async-connect.netty.server
   (:require [clojure.spec :as s]
-            [clojure.core.async :refer [>! >!! <! go-loop thread chan sub unsub pub close!]])
+            [clojure.core.async :refer [>!! <!! go-loop thread chan sub unsub pub close!]]
+            [clojure.tools.logging :as log])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
            [io.netty.bootstrap ServerBootstrap]
            [io.netty.util ReferenceCountUtil]
@@ -63,6 +64,7 @@
 
 (defn default-channel-active
   [^ChannelHandlerContext ctx, publication, sub-ch]
+  (log/debug "channel active: " (.name ctx))
   (sub publication (.name ctx) sub-ch)
   (thread
     (loop []
@@ -71,7 +73,7 @@
                         close? false
                         promise ^ChannelPromise (.voidPromise context)}
                    :as data}
-                  (<! sub-ch)]
+                  (<!! sub-ch)]
         (s/assert ::writedata data)
         (write-if-possible context (or flush? close?) message promise)
         (when close?
@@ -80,11 +82,13 @@
 
 (defn default-channel-inactive
   [^ChannelHandlerContext ctx, publication, sub-ch]
+  (log/debug "channel inactive: " (.name ctx))
   (unsub publication (.name ctx) sub-ch)
   (close! sub-ch))
 
 (defn default-channel-read
   [^ChannelHandlerContext ctx, ^Object msg, read-ch]
+  (log/debug "channel read: " (.name ctx))
   (try
     (>!! read-ch {:context ctx, :message msg})
     (finally
