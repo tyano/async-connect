@@ -35,6 +35,7 @@
 
 (s/def :netty/context #(instance? ChannelHandlerContext %))
 (s/def :netty/message any?)
+(s/def :netty/channel-promise #(instance? ChannelPromise %))
 
 (s/def :server.writedata/flush? boolean?)
 (s/def :server.writedata/close? boolean?)
@@ -44,7 +45,8 @@
     :req-un [:netty/context
              :netty/message]
     :opt-un [:server.writedata/flush?
-             :server.writedata/close?]))
+             :server.writedata/close?
+             :netty/channel-promise]))
 
 
 (defn default-channel-read
@@ -89,13 +91,19 @@
   (assert write-channel "write-channel must not be nil.")
 
   (go-loop []
-    (if-some [{:keys [^ChannelHandlerContext context message flush? close?] :or {flush? false, close? false} :as data} (<! write-channel)]
+    (if-some [{:keys [^ChannelHandlerContext context message flush? close? ^ChannelPromise promise]
+                 :or {flush? false
+                      close? false
+                      promise ^ChannelPromise (.voidPromise context)}
+                 :as data}
+                (<! write-channel)]
       (do
         (s/assert ::writedata data)
         (thread
-          (if (or flush? close?)
-            (.writeAndFlush context message)
-            (.write context message))
+          (let [void-promise (.voidPromise context)]
+            (if (or flush? close?)
+              (.writeAndFlush context message promise)
+              (.write context message promise)))
           (when close?
             (.close context)))
         (recur))
