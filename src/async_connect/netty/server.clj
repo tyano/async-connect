@@ -12,6 +12,7 @@
               ChannelOption
               EventLoopGroup
               ChannelHandlerContext
+              ChannelInboundHandler
               ChannelInboundHandlerAdapter
               ChannelPromise
               ChannelHandler]
@@ -22,13 +23,105 @@
            [io.netty.channel.socket.nio
               NioServerSocketChannel]))
 
-(defn- socket-channel? [ch] (when ch (instance? SocketChannel)))
-
-(defn- async-channel? [ch] (instance? ManyToManyChannel ch))
+(defn- socket-channel? [ch] (when ch (instance? SocketChannel ch)))
+(defn- channel-handler-context? [o] (when o (instance? ChannelHandlerContext o)))
+(defn- async-channel? [ch] (when ch (instance? ManyToManyChannel ch)))
+(defn- throwable? [th] (when th (instance? Throwable th)))
+(defn- channel-inbound-handler? [h] (when h (instance? ChannelInboundHandler h)))
 
 (s/def :server.config/port pos-int?)
 (s/def :server.config/channel-initializer
-  (s/fspec :args (s/cat :channel socket-channel?) :ret socket-channel?))
+  (s/fspec :args (s/cat :netty-channel socket-channel?
+                        :read-channel async-channel?
+                        :write-channel async-channel?
+                        :config ::config)
+           :ret socket-channel?))
+
+(s/def :inbound/channel-active        (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :inbound/channel-inactive      (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :inbound/channel-read          (s/fspec :args (s/cat :ctx channel-handler-context? :obj any?)))
+(s/def :inbound/channel-read-complete (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :inbound/channel-registered    (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :inbound/channel-unregistered  (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :inbound/channel-writability-changed
+                                      (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :inbound/exception-caught      (s/fspec :args (s/cat :ctx channel-handler-context? :throwable throwable?)))
+(s/def :inbound/user-event-triggered  (s/fspec :args (s/cat :ctx channel-handler-context? :event any?)))
+
+(s/def :inbound/handler-map
+  (s/keys
+    :opt [:inbound/channel-active
+          :inbound/channel-inactive
+          :inbound/channel-read
+          :inbound/channel-read-complete
+          :inbound/channel-registered
+          :inbound/channel-unregistered
+          :inbound/channel-writability-changed
+          :inbound/exception-caught
+          :inbound/user-event-triggered]))
+
+(s/fdef make-inbound-handler
+  :args (s/cat :handlers :inbound/handler-map)
+  :ret  channel-inbound-handler?)
+
+
+(defn make-inbound-handler
+  [handlers]
+  (proxy [ChannelInboundHandlerAdapter] []
+    (channelActive
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:inbound/channel-active handlers)]
+        (h ctx)
+        (proxy-super channelActive ctx)))
+
+    (channelInactive
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:inbound/channel-inactive handlers)]
+        (h ctx)
+        (proxy-super channelInactive ctx)))
+
+    (channelRead
+      [^ChannelHandlerContext ctx, ^Object msg]
+      (if-let [h (:inbound/channel-read handlers)]
+        (h ctx msg)
+        (proxy-super channelRead ctx msg)))
+
+    (channelReadComplete
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:inbound/channel-read-complete handlers)]
+        (h ctx)
+        (proxy-super channelReadComplete ctx)))
+
+    (channelRegistered
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:inbound/channel-registered handlers)]
+        (h ctx)
+        (proxy-super channelRegistered ctx)))
+
+    (channelUnregistered
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:inbound/channel-unregistered handlers)]
+        (h ctx)
+        (proxy-super channelUnregistered ctx)))
+
+    (channelWritabilityChanged
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:inbound/channel-writability-changed handlers)]
+        (h ctx)
+        (proxy-super channelWritabilityChanged ctx)))
+
+    (exceptionCaught
+      [^ChannelHandlerContext ctx, ^Throwable cause]
+      (if-let [h (:inbound/exception-caught handlers)]
+        (h ctx cause)
+        (proxy-super exceptionCaught ctx cause)))
+
+    (userEventTriggered
+      [^ChannelHandlerContext ctx, ^Object evt]
+      (if-let [h (:inbound/user-event-triggered handlers)]
+        (h ctx evt)
+        (proxy-super userEventTriggered ctx evt)))))
+
 
 (s/def ::config
   (s/keys
@@ -97,25 +190,25 @@
 (defn make-default-handler
   [read-ch write-publication]
   (let [sub-ch-ref (atom nil)]
-    (proxy [ChannelInboundHandlerAdapter] []
-      (channelRead
-        [^ChannelHandlerContext ctx, ^Object msg]
-        (default-channel-read ctx msg read-ch))
+    (make-inbound-handler
+      {:inbound/channel-read
+          (fn [ctx msg]
+            (default-channel-read ctx msg read-ch))
 
-      (channelActive
-        [^ChannelHandlerContext ctx]
-        (let [sub-ch (chan)]
-          (reset! sub-ch-ref sub-ch)
-          (default-channel-active ctx write-publication sub-ch)))
+       :inbound/channel-active
+          (fn [ctx]
+            (let [sub-ch (chan)]
+              (reset! sub-ch-ref sub-ch)
+              (default-channel-active ctx write-publication sub-ch)))
 
-      (channelInactive
-        [^ChannelHandlerContext ctx]
-        (default-channel-inactive ctx write-publication @sub-ch-ref))
+       :inbound/channel-inactive
+          (fn [ctx]
+            (default-channel-inactive ctx write-publication @sub-ch-ref))
 
-      (exceptionCaught
-        [^ChannelHandlerContext ctx, ^Throwable th]
-        (.printStackTrace th)
-        (.close ctx)))))
+       :inbound/exception-caught
+          (fn [^ChannelHandlerContext ctx, ^Throwable th]
+            (.printStackTrace th)
+            (.close ctx))})))
 
 (defn make-write-publication
   [write-ch]
@@ -124,7 +217,7 @@
 (defn make-channel-initializer
   [write-ch]
   (let [publication (make-write-publication write-ch)]
-    (fn [^SocketChannel netty-ch read-ch config]
+    (fn [^SocketChannel netty-ch read-ch write-ch config]
       (.. netty-ch
         (pipeline)
         (addLast (into-array ChannelHandler [(make-default-handler read-ch publication)]))))))
@@ -157,7 +250,7 @@
               (initChannel
                 [^SocketChannel ch]
                 (when channel-initializer
-                  (channel-initializer ch read-channel config)))))
+                  (channel-initializer ch read-channel write-channel config)))))
           (option ChannelOption/SO_BACKLOG (int 128))
           (childOption ChannelOption/SO_KEEPALIVE true))
         (let [f ^ChannelFuture (.. bootstrap (bind (int port)) (sync))]
