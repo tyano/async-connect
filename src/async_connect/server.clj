@@ -1,4 +1,4 @@
-(ns async-connect.netty.server
+(ns async-connect.server
   (:require [clojure.spec :as s]
             [clojure.core.async :refer [>!! <!! go-loop thread chan sub unsub pub close!]]
             [clojure.tools.logging :as log]
