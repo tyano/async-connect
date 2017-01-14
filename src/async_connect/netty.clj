@@ -1,5 +1,6 @@
 (ns async-connect.netty
-  (:require [clojure.spec :as s])
+  (:require [clojure.spec :as s]
+            [clojure.tools.logging :as log])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
            [io.netty.bootstrap
               Bootstrap
@@ -13,7 +14,10 @@
            [io.netty.channel.socket
               SocketChannel]
            [io.netty.channel.socket.nio
-              NioServerSocketChannel]))
+              NioServerSocketChannel]
+           [io.netty.buffer
+              ByteBuf
+              Unpooled]))
 
 (s/def :netty/context #(instance? ChannelHandlerContext %))
 (s/def :netty/message any?)
@@ -45,4 +49,28 @@
         (do
           (Thread/sleep 200)
           (recur (.isWritable netty-ch)))))))
+
+
+
+(defn- bytebuf->bytes
+  [buf]
+  (assert #(instance? ByteBuf buf))
+  (let [bytes (byte-array (.readableBytes buf))]
+    (.readBytes buf bytes)
+    bytes))
+
+(defn- bytes->string
+  [data]
+  (String. data))
+
+(defn- string->bytes
+  [data]
+  (.getBytes data "UTF-8"))
+
+(defn- bytes->bytebuf
+  [data]
+  (Unpooled/wrappedBuffer data))
+
+(def bytebuf->string (comp (map bytebuf->bytes) (map bytes->string)))
+(def string->bytebuf (comp (map string->bytes) (map bytes->bytebuf)))
 

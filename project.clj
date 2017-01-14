@@ -9,10 +9,10 @@
                  [org.clojure/core.async "0.2.395"]]
 
   :profiles {:dev
-              {:dependencies [[ch.qos.logback/logback-classic "1.1.8"]]
+              {:dependencies [[ch.qos.logback/logback-classic "1.1.8"]
+                              [org.clojure/tools.namespace "0.2.11"]]
                :resource-paths ["resources-dev"]}
              :release
               {:resource-paths ["resources-release"]}}
 
-  :main async-connect.core
-  :aot [async-connect.core])
+  :main async-connect.core)

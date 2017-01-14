@@ -52,24 +52,27 @@
 
 (defn make-client-inbound-handler-map
   [read-ch write-ch]
-  {:inbound/channel-active
-      (fn [^ChannelHandlerContext ctx]
-        (thread
-          (loop []
-            (when-some [{:keys [message flush? close? ^ChannelPromise promise]
-                         :or {flush? false
-                              close? false
-                              promise ^ChannelPromise (.voidPromise ctx)}
-                         :as data}
-                        (<!! write-ch)]
-              (s/assert ::writedata data)
-              (write-if-possible ctx (or flush? close?) message promise)
-              (if close?
-                (.close ctx)
-                (recur))))))
+  {:handler/handler-added
+     (fn [ctx]
+      (log/debug "handler-added")
+      (thread
+        (loop []
+          (when-some [{:keys [message flush? close? ^ChannelPromise promise]
+                       :or {flush? false
+                            close? false
+                            promise ^ChannelPromise (.voidPromise ctx)}
+                       :as data}
+                      (<!! write-ch)]
+            (s/assert ::writedata data)
+            (write-if-possible ctx (or flush? close?) message promise)
+            (if close?
+              (.close ctx)
+              (recur))))
+        (log/info "A writer-thread stops.")))
 
    :inbound/channel-read
       (fn [^ChannelHandlerContext ctx, ^Object msg]
+        (log/trace "channel-read")
         (>!! read-ch msg))
 
    :inbound/exception-caught
@@ -81,6 +84,7 @@
 (defn add-client-handler
   [netty-channel read-ch write-ch]
   (when netty-channel
+    (log/debug "add-client-handler: " netty-channel)
     (let [handler-name "async-connect-client"
           pipeline     (.pipeline netty-channel)]
       (when (.context pipeline handler-name)
@@ -111,8 +115,8 @@
                       (channel NioSocketChannel)
                       (option ChannelOption/WRITE_BUFFER_HIGH_WATER_MARK (int (* 32 1024)))
                       (option ChannelOption/WRITE_BUFFER_LOW_WATER_MARK (int (* 8 1024)))
-                      (option ChannelOption/SO_SNDBUF (* 1024 1024))
-                      (option ChannelOption/SO_RCVBUF (* 1024 1024))
+                      (option ChannelOption/SO_SNDBUF (int (* 1024 1024)))
+                      (option ChannelOption/SO_RCVBUF (int (* 1024 1024)))
                       (option ChannelOption/TCP_NODELAY true)
                       (option ChannelOption/SO_KEEPALIVE true)
                       (option ChannelOption/SO_REUSEADDR true)
