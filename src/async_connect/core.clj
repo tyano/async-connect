@@ -1,5 +1,5 @@
 (ns async-connect.core
-  (:require [async-connect.netty.server :refer [run-server] :as server]
+  (:require [async-connect.server :refer [run-server] :as server]
             [clojure.spec :as s]
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [chan go-loop <! >!]])

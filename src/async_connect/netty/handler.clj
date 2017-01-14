@@ -20,6 +20,9 @@
 (defn- channel-promise? [p] (when p (instance? ChannelPromise p)))
 (defn- socket-address? [addr] (when addr (instance? SocketAddress addr)))
 
+(s/def :handler/handler-added         (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :handler/handler-removed       (s/fspec :args (s/cat :ctx channel-handler-context?)))
+
 (s/def :inbound/channel-active        (s/fspec :args (s/cat :ctx channel-handler-context?)))
 (s/def :inbound/channel-inactive      (s/fspec :args (s/cat :ctx channel-handler-context?)))
 (s/def :inbound/channel-read          (s/fspec :args (s/cat :ctx channel-handler-context? :obj any?)))
@@ -33,7 +36,9 @@
 
 (s/def :inbound/handler-map
   (s/keys
-    :opt [:inbound/channel-active
+    :opt [:handler/handler-added
+          :handler/handler-removed
+          :inbound/channel-active
           :inbound/channel-inactive
           :inbound/channel-read
           :inbound/channel-read-complete
@@ -51,6 +56,18 @@
 (defn make-inbound-handler
   [handlers]
   (proxy [ChannelInboundHandlerAdapter] []
+    (handlerAdded
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:handler/handler-added handlers)]
+        (h ctx)
+        (proxy-super handlerAdded ctx)))
+
+    (handlerRemoved
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:handler/handler-removed handlers)]
+        (h ctx)
+        (proxy-super handlerRemoved ctx)))
+
     (channelActive
       [^ChannelHandlerContext ctx]
       (if-let [h (:inbound/channel-active handlers)]
@@ -126,9 +143,10 @@
 (s/def :outbound/write      (s/fspec :args (s/cat :ctx channel-handler-context?, :msg any?, :promise channel-promise?)))
 
 (s/def :outbound/handler-map
-  (s/keysderegister
-    [ChannelHandlerContext ctx, ChannelPromise promise]
-    :opt [:outbound/bind
+  (s/keys
+    :opt [:handler/handler-added
+          :handler/handler-removed
+          :outbound/bind
           :outbound/close
           :outbound/connect
           :outbound/deregister
@@ -146,6 +164,18 @@
 (defn make-outbound-handler
   [handlers]
   (proxy [ChannelOutboundHandlerAdapter] []
+    (handlerAdded
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:handler/handler-added handlers)]
+        (h ctx)
+        (proxy-super handlerAdded ctx)))
+
+    (handlerRemoved
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:handler/handler-removed handlers)]
+        (h ctx)
+        (proxy-super handlerRemoved ctx)))
+
     (bind
       [^ChannelHandlerContext ctx, ^SocketAddress local-address, ^ChannelPromise promise]
       (if-let [h (:outbound/bind handlers)]

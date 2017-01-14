@@ -1,11 +1,14 @@
 (ns async-connect.client
   (:require [clojure.spec :as s]
             [clojure.tools.logging :as log]
-            [async-connect.netty :refer [make-channel-initializer]]
-            [async-connect.spec :refer [async-channel?]]
+            [clojure.core.async :refer [>!! <!! thread close! chan]]
+            [async-connect.spec :as spec]
+            [async-connect.netty :refer [write-if-possible]]
             [async-connect.netty.handler :refer [make-inbound-handler]])
   (:import [io.netty.bootstrap
               Bootstrap]
+           [io.netty.buffer
+              PooledByteBufAllocator]
            [io.netty.channel
               EventLoopGroup
               ChannelOption
@@ -20,26 +23,54 @@
               NioSocketChannel]))
 
 
-
 (s/def :client.config/port pos-int?)
+(s/def :client.config/channel-initializer
+  (s/fspec :args (s/cat :netty-channel :netty/socket-channel
+                        :config ::config)
+           :ret :netty/socket-channel))
+
+(s/def :client.config/bootstrap-initializer
+  (s/fspec :args (s/cat :bootstrap :netty/bootstrap)
+           :ret  :netty/bootstrap))
+
 (s/def ::config
-  (s/key
-    :req [:client.config/port]))
+  (s/keys
+    :req [:client.config/port]
+    :opt [:client.config/bootstrap-initializer
+          :client.config/channel-initializer]))
 
+(s/def ::writedata
+  (s/keys
+    :req-un [:netty/message]
+    :opt-un [:netty/flush
+             :netty/close
+             :netty/channel-promise]))
 
-(defn default-channel-read
-  [^ChannelHandlerContext ctx, ^Object msg, read-ch]
-  (log/debug "channel read: " (.name ctx))
-  (try
-    (>!! read-ch msg)
-    (finally
-      (ReferenceCountUtil/releaseLater ^ByteBuf msg))))
+(s/fdef make-client-inbound-handler-map
+  :args (s/cat :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
+  :ret  :inbound/handler-map)
 
-(defn make-default-inbound-handler-map
-  [read-ch]
-  {:inbound/channel-read
+(defn make-client-inbound-handler-map
+  [read-ch write-ch]
+  {:inbound/channel-active
+      (fn [^ChannelHandlerContext ctx]
+        (thread
+          (loop []
+            (when-some [{:keys [message flush? close? ^ChannelPromise promise]
+                         :or {flush? false
+                              close? false
+                              promise ^ChannelPromise (.voidPromise ctx)}
+                         :as data}
+                        (<!! write-ch)]
+              (s/assert ::writedata data)
+              (write-if-possible ctx (or flush? close?) message promise)
+              (if close?
+                (.close ctx)
+                (recur))))))
+
+   :inbound/channel-read
       (fn [^ChannelHandlerContext ctx, ^Object msg]
-        (default-channel-read ctx msg read-ch))
+        (>!! read-ch msg))
 
    :inbound/exception-caught
       (fn [^ChannelHandlerContext ctx, ^Throwable th]
@@ -47,34 +78,106 @@
         (.close ctx))})
 
 
-(defn make-default-outbound-handler-map
-  [write-ch]
-  {:outbound/bind
-      (fn [ctx local-addr promise])
-   :outbound/close
-      (fn [ctx promise])
-   :outbound/connect
-      (fn [ctx remote-addr local-addr promise])})
+(defn add-client-handler
+  [netty-channel read-ch write-ch]
+  (when netty-channel
+    (let [handler-name "async-connect-client"
+          pipeline     (.pipeline netty-channel)]
+      (when (.context pipeline handler-name)
+        (.remove pipeline handler-name))
+      (.addLast pipeline
+        handler-name
+        (make-inbound-handler (make-client-inbound-handler-map read-ch write-ch))))))
 
 
-(defn default-channel-initializer
-  [read-ch write-ch]
-  (fn [^SocketChannel netty-ch]
-    (.. netty-ch
-      (pipeline)
-      (addLast (into-array ChannelHandler [(make-inbound-handler (make-default-inbound-handler-map read-ch))])))))
+(defn- init-bootstrap
+  [bootstrap initializer]
+  (if initializer
+    (initializer bootstrap)
+    bootstrap))
 
+(s/fdef make-bootstrap
+  :args (s/cat :config ::config)
+  :ret  :netty/bootstrap)
 
 (defn make-bootstrap
-  [{:keys [:client.config/port] :as config}]
+  [{:keys [:client.config/port
+           :client.config/bootstrap-initializer
+           :client.config/channel-initializer]
+      :as config}]
   (let [worker-group ^EventLoopGroup (NioEventLoopGroup.)]
-    (let [bootstrap (Bootstrap.)]
-      (.. bootstrap
-        (group worker-group)
-        (channel NioSocketChannel)
-        (option ChannelOption/SO_KEEPALIVE true)
-        (handler
-          (proxy [ChannelInitializer] []
-            (initChannel
-              [^SocketChannel ch]
-              )))))))
+    (let [bootstrap (.. (Bootstrap.)
+                      (group worker-group)
+                      (channel NioSocketChannel)
+                      (option ChannelOption/WRITE_BUFFER_HIGH_WATER_MARK (int (* 32 1024)))
+                      (option ChannelOption/WRITE_BUFFER_LOW_WATER_MARK (int (* 8 1024)))
+                      (option ChannelOption/SO_SNDBUF (* 1024 1024))
+                      (option ChannelOption/SO_RCVBUF (* 1024 1024))
+                      (option ChannelOption/TCP_NODELAY true)
+                      (option ChannelOption/SO_KEEPALIVE true)
+                      (option ChannelOption/SO_REUSEADDR true)
+                      (option ChannelOption/ALLOCATOR PooledByteBufAllocator/DEFAULT)
+                      (handler
+                        (proxy [ChannelInitializer] []
+                          (initChannel
+                            [^SocketChannel ch]
+                            (when channel-initializer
+                              (channel-initializer ch))
+                            nil))))]
+      (init-bootstrap bootstrap bootstrap-initializer))))
+
+
+(s/def :client/channel  (s/nilable :netty/channel))
+(s/def :client/read-ch  ::spec/read-channel)
+(s/def :client/write-ch ::spec/write-channel)
+(s/def :client/connection
+  (s/keys
+    :req [:client/channel
+          :client/read-ch
+          :client/write-ch]))
+
+(s/fdef connect
+  :args (s/cat :bootstrap :netty/bootstrap,
+               :host      string?
+               :port      pos-int?
+               :read-ch   (s/? (s/nilable :client/read-ch))
+               :write-ch  (s/? (s/nilable :client/write-ch)))
+  :ret  :client/connection)
+
+(defn connect
+  ([bootstrap host port read-ch write-ch]
+    (let [read-chan  (or read-ch (chan))
+          write-chan (or write-ch (chan))
+          channel (.. bootstrap (connect host port) (sync) (channel))]
+
+      (add-client-handler channel read-chan write-chan)
+
+      {:client/channel  channel
+       :client/read-ch  read-chan
+       :client/write-ch write-chan}))
+
+  ([bootstrap host port]
+    (connect bootstrap host port nil nil)))
+
+(s/fdef close
+  :args (s/cat :connection :client/connection)
+  :ret  :client/connection)
+
+(defn close
+  [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
+  (when channel
+    (.. channel (close) (sync))
+    (log/debug "connection closed: " channel)
+    (close! read-ch)
+    (close! write-ch)
+    (assoc connection :client/channel nil)))
+
+(s/fdef closed?
+  :args (s/cat :connection :client/connection)
+  :ret  boolean?)
+
+(defn closed?
+  [{:keys [:client/channel]}]
+  (nil? channel))
+
+

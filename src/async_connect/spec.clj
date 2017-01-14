@@ -1,4 +1,10 @@
 (ns async-connect.spec
-  (:import [clojure.core.async.impl.channels ManyToManyChannel]))
+  (:require [clojure.spec :as s])
+  (:import [clojure.core.async.impl.channels ManyToManyChannel]
+           [clojure.core.async.impl.protocols ReadPort WritePort]))
 
-(defn async-channel? [ch] (when ch (instance? ManyToManyChannel ch)))
+(s/def ::async-channel #(instance? ManyToManyChannel %))
+(s/def ::read-channel  #(instance? ReadPort %))
+(s/def ::write-channel  #(instance? WritePort %))
+(s/def ::atom #(instance? clojure.lang.Atom %))
+
