@@ -6,11 +6,19 @@
            [io.netty.channel
               ChannelHandlerContext
               ChannelInboundHandler
-              ChannelInboundHandlerAdapter]))
+              ChannelInboundHandlerAdapter
+              ChannelOutboundHandler
+              ChannelOutboundHandlerAdapter
+              ChannelPromise]
+           [java.net
+              SocketAddress]))
 
 (defn- throwable? [th] (when th (instance? Throwable th)))
 (defn- channel-handler-context? [o] (when o (instance? ChannelHandlerContext o)))
 (defn- channel-inbound-handler? [h] (when h (instance? ChannelInboundHandler h)))
+(defn- channel-outbound-handler? [h] (when h (instance? ChannelOutboundHandler h)))
+(defn- channel-promise? [p] (when p (instance? ChannelPromise p)))
+(defn- socket-address? [addr] (when addr (instance? SocketAddress addr)))
 
 (s/def :inbound/channel-active        (s/fspec :args (s/cat :ctx channel-handler-context?)))
 (s/def :inbound/channel-inactive      (s/fspec :args (s/cat :ctx channel-handler-context?)))
@@ -96,4 +104,96 @@
       (if-let [h (:inbound/user-event-triggered handlers)]
         (h ctx evt)
         (proxy-super userEventTriggered ctx evt)))))
+
+
+
+(s/def :outbound/bind    (s/fspec :args (s/cat :ctx channel-handler-context?
+                                               :local-address socket-address?
+                                               :promise channel-promise?)))
+
+(s/def :outbound/close   (s/fspec :args (s/cat :ctx channel-handler-context?
+                                               :promise channel-promise?)))
+
+(s/def :outbound/connect (s/fspec :args (s/cat :ctx channel-handler-context?
+                                               :remote-addr socket-address?
+                                               :local-addr socket-address?
+                                               :promise channel-promise?)))
+
+(s/def :outbound/deregister (s/fspec :args (s/cat :ctx channel-handler-context?, :promise channel-promise?)))
+(s/def :outbound/disconnect (s/fspec :args (s/cat :ctx channel-handler-context?, :promise channel-promise?)))
+(s/def :outbound/flush      (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :outbound/read       (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def :outbound/write      (s/fspec :args (s/cat :ctx channel-handler-context?, :msg any?, :promise channel-promise?)))
+
+(s/def :outbound/handler-map
+  (s/keysderegister
+    [ChannelHandlerContext ctx, ChannelPromise promise]
+    :opt [:outbound/bind
+          :outbound/close
+          :outbound/connect
+          :outbound/deregister
+          :outbound/disconnect
+          :outbound/flush
+          :outbound/read
+          :outbound/write]))
+
+
+(s/fdef make-outbound-handler
+  :args (s/cat :handlers :outbound/handler-map)
+  :ret  channel-inbound-handler?)
+
+
+(defn make-outbound-handler
+  [handlers]
+  (proxy [ChannelOutboundHandlerAdapter] []
+    (bind
+      [^ChannelHandlerContext ctx, ^SocketAddress local-address, ^ChannelPromise promise]
+      (if-let [h (:outbound/bind handlers)]
+        (h ctx local-address promise)
+        (proxy-super bind ctx local-address promise)))
+
+    (close
+      [^ChannelHandlerContext ctx, ^ChannelPromise promise]
+      (if-let [h (:outbound/close handlers)]
+        (h ctx promise)
+        (proxy-super close ctx promise)))
+
+    (connect
+      [^ChannelHandlerContext ctx, ^SocketAddress remote-address, ^SocketAddress local-address, ^ChannelPromise promise]
+      (if-let [h (:outbound/connect handlers)]
+        (h ctx remote-address local-address promise)
+        (proxy-super connect ctx remote-address local-address promise)))
+
+    (deregister
+      [^ChannelHandlerContext ctx, ^ChannelPromise promise]
+      (if-let [h (:outbound/disconnect handlers)]
+        (h ctx promise)
+        (proxy-super deregister ctx promise)))
+
+    (disconnect
+      [^ChannelHandlerContext ctx, ^ChannelPromise promise]
+      (if-let [h (:outbound/disconnect handlers)]
+        (h ctx promise)
+        (proxy-super disconnect ctx promise)))
+
+    (flush
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:outbound/flush handlers)]
+        (h ctx)
+        (proxy-super flush ctx)))
+
+    (read
+      [^ChannelHandlerContext ctx]
+      (if-let [h (:outbound/read handlers)]
+        (h ctx)
+        (proxy-super read ctx)))
+
+    (write
+      [^ChannelHandlerContext ctx, ^Object msg, ^ChannelPromise promise]
+      (if-let [h (:outbound/write handlers)]
+        (h ctx msg promise)
+        (proxy-super write ctx msg promise)))))
+
+
+
 

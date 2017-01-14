@@ -2,9 +2,9 @@
   (:require [clojure.spec :as s]
             [clojure.core.async :refer [>!! <!! go-loop thread chan sub unsub pub close!]]
             [clojure.tools.logging :as log]
-            [async-connect.netty.handler :refer [make-inbound-handler]])
-  (:import [clojure.core.async.impl.channels ManyToManyChannel]
-           [io.netty.bootstrap ServerBootstrap]
+            [async-connect.netty.handler :refer [make-inbound-handler]]
+            [async-connect.spec :refer [async-channel?]])
+  (:import [io.netty.bootstrap ServerBootstrap]
            [io.netty.util ReferenceCountUtil]
            [io.netty.channel
               Channel
