@@ -97,28 +97,27 @@
     (finally
       (ReferenceCountUtil/releaseLater ^ByteBuf msg))))
 
-(defn make-default-handler
+(defn make-default-handler-map
   [read-ch write-publication]
   (let [sub-ch-ref (atom nil)]
-    (make-inbound-handler
-      {:inbound/channel-read
-          (fn [ctx msg]
-            (default-channel-read ctx msg read-ch))
+    {:inbound/channel-read
+        (fn [ctx msg]
+          (default-channel-read ctx msg read-ch))
 
-       :inbound/channel-active
-          (fn [ctx]
-            (let [sub-ch (chan)]
-              (reset! sub-ch-ref sub-ch)
-              (default-channel-active ctx write-publication sub-ch)))
+     :inbound/channel-active
+        (fn [ctx]
+          (let [sub-ch (chan)]
+            (reset! sub-ch-ref sub-ch)
+            (default-channel-active ctx write-publication sub-ch)))
 
-       :inbound/channel-inactive
-          (fn [ctx]
-            (default-channel-inactive ctx write-publication @sub-ch-ref))
+     :inbound/channel-inactive
+        (fn [ctx]
+          (default-channel-inactive ctx write-publication @sub-ch-ref))
 
-       :inbound/exception-caught
-          (fn [^ChannelHandlerContext ctx, ^Throwable th]
-            (.printStackTrace th)
-            (.close ctx))})))
+     :inbound/exception-caught
+        (fn [^ChannelHandlerContext ctx, ^Throwable th]
+          (.printStackTrace th)
+          (.close ctx))}))
 
 (defn make-write-publication
   [write-ch]
@@ -130,7 +129,7 @@
     (fn [^SocketChannel netty-ch read-ch write-ch config]
       (.. netty-ch
         (pipeline)
-        (addLast (into-array ChannelHandler [(make-default-handler read-ch publication)]))))))
+        (addLast (into-array ChannelHandler [(make-inbound-handler (make-default-handler-map read-ch publication))]))))))
 
 (s/fdef run-server
   :args (s/cat :read-channel async-channel?, :write-channel async-channel?, :config ::config)
