@@ -66,19 +66,21 @@
 (defn default-channel-active
   [^ChannelHandlerContext ctx, write-ch]
   (log/debug "channel active: " (.name ctx))
-  (thread
-    (loop []
-      (when-some [{:keys [message flush? close? ^ChannelPromise promise]
-                   :or {flush? false
-                        close? false
-                        promise ^ChannelPromise (.voidPromise ctx)}
-                   :as data}
-                  (<!! write-ch)]
+  (go-loop []
+    (if-some [{:keys [message flush? close? ^ChannelPromise promise]
+                 :or {flush? false
+                      close? false
+                      promise ^ChannelPromise (.voidPromise ctx)}
+                 :as data}
+                (<! write-ch)]
+      (do
         (s/assert ::writedata data)
-        (write-if-possible ctx (or flush? close?) message promise)
-        (when close?
-          (.close ctx))
-        (recur)))))
+        (thread
+          (write-if-possible ctx (or flush? close?) message promise)
+          (when close?
+            (.close ctx)))
+        (recur))
+      (log/debug "A writer-thread stops: " (.name ctx)))))
 
 (defn default-channel-inactive
   [^ChannelHandlerContext ctx, read-ch, write-ch]

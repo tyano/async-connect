@@ -75,21 +75,22 @@
   [read-ch write-ch]
   {:handler/handler-added
     (fn [^ChannelHandlerContext ctx]
-      (log/debug "handler-added")
-      (thread
-        (loop []
-          (when-some [{:keys [message flush? close? ^ChannelPromise promise]
-                       :or {flush? false
-                            close? false
-                            promise ^ChannelPromise (.voidPromise ctx)}
-                       :as data}
-                      (<!! write-ch)]
+      (log/debug "handler-added: " (.name ctx))
+      (go-loop []
+        (if-some [{:keys [message flush? close? ^ChannelPromise promise]
+                     :or {flush? false
+                          close? false
+                          promise ^ChannelPromise (.voidPromise ctx)}
+                     :as data}
+                    (<!! write-ch)]
+          (do
             (s/assert ::writedata data)
-            (write-if-possible ctx (or flush? close?) message promise)
-            (if close?
-              (.close ctx)
-              (recur))))
-        (log/info "A writer-thread stops.")))
+            (thread
+              (write-if-possible ctx (or flush? close?) message promise)
+              (when close?
+                (.close ctx)))
+            (recur))
+          (log/debug "A writer-thread stops: " (.name ctx)))))
 
    :inbound/channel-read
     (fn [^ChannelHandlerContext ctx, ^Object msg]
