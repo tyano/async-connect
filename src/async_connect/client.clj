@@ -18,7 +18,8 @@
               ChannelHandlerContext
               ChannelFuture
               ChannelFutureListener
-              ChannelPromise]
+              ChannelPromise
+              ChannelPipeline]
            [io.netty.channel.nio
               NioEventLoopGroup]
            [io.netty.channel.socket
@@ -73,7 +74,7 @@
 (defn make-client-inbound-handler-map
   [read-ch write-ch]
   {:handler/handler-added
-    (fn [ctx]
+    (fn [^ChannelHandlerContext ctx]
       (log/debug "handler-added")
       (thread
         (loop []
@@ -109,11 +110,11 @@
 
 
 (defn add-client-handler
-  [netty-channel read-ch write-ch]
+  [^SocketChannel netty-channel read-ch write-ch]
   (when netty-channel
     (log/debug "add-client-handler: " netty-channel)
     (let [handler-name "async-connect-client"
-          pipeline     (.pipeline netty-channel)]
+          pipeline     ^ChannelPipeline (.pipeline netty-channel)]
       (when (.context pipeline handler-name)
         (.remove pipeline handler-name))
       (.addLast pipeline
