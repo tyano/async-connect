@@ -165,6 +165,7 @@
         (init-bootstrap bootstrap bootstrap-initializer)
 
         (let [f ^ChannelFuture (.. bootstrap (bind (int port)) (sync))]
+          (log/info "SERVER STARTS AT" port)
           (.. f
             (channel)
             (closeFuture)
