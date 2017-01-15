@@ -1,10 +1,10 @@
 (ns async-connect.client
   (:require [clojure.spec :as s]
             [clojure.tools.logging :as log]
-            [clojure.core.async :refer [>!! <!! thread close! chan]]
+            [clojure.core.async :refer [>!! <!! >! thread close! chan go]]
             [async-connect.spec :as spec]
             [async-connect.netty :refer [write-if-possible]]
-            [async-connect.netty.handler :refer [make-inbound-handler]])
+            [async-connect.netty.handler :refer [make-inbound-handler]]
   (:import [io.netty.bootstrap
               Bootstrap]
            [io.netty.buffer
@@ -14,7 +14,10 @@
               ChannelOption
               ChannelInitializer
               ChannelHandler
-              ChannelHandlerContext]
+              ChannelHandlerContext
+              ChannelFuture
+              ChannelFutureListener
+              ChannelPromise]
            [io.netty.channel.nio
               NioEventLoopGroup]
            [io.netty.channel.socket
@@ -149,10 +152,10 @@
   :ret  :client/connection)
 
 (defn connect
-  ([bootstrap host port read-ch write-ch]
+  ([^Bootstrap bootstrap ^String host port read-ch write-ch]
     (let [read-chan  (or read-ch (chan))
           write-chan (or write-ch (chan))
-          channel (.. bootstrap (connect host port) (sync) (channel))]
+          channel (.. bootstrap (connect host (int port)) (sync) (channel))]
 
       (add-client-handler channel read-chan write-chan)
 
@@ -160,7 +163,7 @@
        :client/read-ch  read-chan
        :client/write-ch write-chan}))
 
-  ([bootstrap host port]
+  ([^Bootstrap bootstrap host port]
     (connect bootstrap host port nil nil)))
 
 (s/fdef close
@@ -170,7 +173,7 @@
 (defn close
   [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
   (when channel
-    (.. channel (close) (sync))
+    (.. ^SocketChannel channel (close) (sync))
     (log/debug "connection closed: " channel)
     (close! read-ch)
     (close! write-ch)

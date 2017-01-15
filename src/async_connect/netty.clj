@@ -55,20 +55,20 @@
 (defn- bytebuf->bytes
   [buf]
   (assert #(instance? ByteBuf buf))
-  (let [bytes (byte-array (.readableBytes buf))]
-    (.readBytes buf bytes)
+  (let [bytes (byte-array (.readableBytes ^ByteBuf buf))]
+    (.readBytes ^ByteBuf buf bytes)
     bytes))
 
 (defn- bytes->string
-  [data]
+  [^bytes data]
   (String. data))
 
 (defn- string->bytes
-  [data]
+  [^String data]
   (.getBytes data "UTF-8"))
 
 (defn- bytes->bytebuf
-  [data]
+  [^bytes data]
   (Unpooled/wrappedBuffer data))
 
 (def bytebuf->string (comp (map bytebuf->bytes) (map bytes->string)))

@@ -104,7 +104,7 @@
 
 (defn make-write-publication
   [write-ch]
-  (pub write-ch #(.name (:context %))))
+  (pub write-ch #(.name ^ChannelHandlerContext (:context %))))
 
 (defn make-channel-initializer
   [write-ch]
@@ -112,7 +112,7 @@
     (fn [^SocketChannel netty-ch read-ch write-ch]
       (.. netty-ch
         (pipeline)
-        (addLast "default" (make-inbound-handler (make-default-handler-map read-ch publication)))))))
+        (addLast "default" ^ChannelHandler (make-inbound-handler (make-default-handler-map read-ch publication)))))))
 
 
 (defn- init-bootstrap
@@ -140,9 +140,7 @@
   (let [boss-group ^EventLoopGroup (NioEventLoopGroup.)
         worker-group ^EventLoopGroup (NioEventLoopGroup.)]
     (try
-      (let [bootstrap ^ServerBootstrap (.. (ServerBootstrap.)
-                                          (group boss-group worker-group)
-                                          (channel NioServerSocketChannel)
+      (let [bootstrap ^ServerBootstrap (.. ^ServerBootstrap (ServerBootstrap.)
                                           (childHandler
                                             (proxy [ChannelInitializer] []
                                               (initChannel
@@ -151,11 +149,13 @@
                                                   (initializer ch read-channel write-channel))
                                                 (when channel-initializer
                                                   (channel-initializer ch read-channel write-channel config)))))
+                                          (childOption ChannelOption/SO_KEEPALIVE true)
+                                          (group boss-group worker-group)
+                                          (channel NioServerSocketChannel)
                                           (option ChannelOption/SO_BACKLOG (int 128))
                                           (option ChannelOption/WRITE_BUFFER_HIGH_WATER_MARK (int (* 32 1024)))
                                           (option ChannelOption/WRITE_BUFFER_LOW_WATER_MARK (int (* 8 1024)))
-                                          (option ChannelOption/ALLOCATOR PooledByteBufAllocator/DEFAULT)
-                                          (childOption ChannelOption/SO_KEEPALIVE true))]
+                                          (option ChannelOption/ALLOCATOR PooledByteBufAllocator/DEFAULT))]
 
         (init-bootstrap bootstrap bootstrap-initializer)
 

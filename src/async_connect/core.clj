@@ -16,21 +16,21 @@
   (update data :message
     (fn [buf]
       (assert #(instance? ByteBuf buf))
-      (let [bytes (byte-array (.readableBytes buf))]
-        (.readBytes buf bytes)
+      (let [bytes (byte-array (.readableBytes ^ByteBuf buf))]
+        (.readBytes ^ByteBuf buf bytes)
         bytes))))
 
 (defn- bytes->string
   [data]
-  (update data :message #(String. %)))
+  (update data :message #(String. ^bytes %)))
 
 (defn- string->bytes
   [data]
-  (update data :message #(.getBytes % "UTF-8")))
+  (update data :message #(.getBytes ^String % "UTF-8")))
 
 (defn- bytes->bytebuf
-  [{:keys [context message] :as data}]
-  (update data :message #(Unpooled/wrappedBuffer %)))
+  [data]
+  (update data :message #(Unpooled/wrappedBuffer ^bytes %)))
 
 (def bytebuf->string (comp (map bytebuf->bytes) (map bytes->string)))
 (def string->bytebuf (comp (map string->bytes) (map bytes->bytebuf)))
