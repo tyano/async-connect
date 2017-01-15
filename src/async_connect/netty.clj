@@ -1,6 +1,7 @@
 (ns async-connect.netty
   (:require [clojure.spec :as s]
-            [clojure.tools.logging :as log])
+            [clojure.tools.logging :as log]
+            [async-connect.box :refer [boxed] :as box])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
            [io.netty.bootstrap
               Bootstrap
@@ -50,26 +51,25 @@
           (Thread/sleep 200)
           (recur (.isWritable netty-ch)))))))
 
-
-
 (defn- bytebuf->bytes
-  [buf]
-  (assert #(instance? ByteBuf buf))
-  (let [bytes (byte-array (.readableBytes ^ByteBuf buf))]
-    (.readBytes ^ByteBuf buf bytes)
-    bytes))
+  [data]
+  (box/update data
+    (fn [^ByteBuf buf]
+      (let [bytes (byte-array (.readableBytes buf))]
+        (.readBytes buf bytes)
+        bytes))))
 
 (defn- bytes->string
-  [^bytes data]
-  (String. data))
+  [data]
+  (box/update data #(String. ^bytes %)))
 
 (defn- string->bytes
-  [^String data]
-  (.getBytes data "UTF-8"))
+  [data]
+  (update data :message #(.getBytes ^String % "UTF-8")))
 
 (defn- bytes->bytebuf
-  [^bytes data]
-  (Unpooled/wrappedBuffer data))
+  [data]
+  (update data :message #(Unpooled/wrappedBuffer ^bytes %)))
 
 (def bytebuf->string (comp (map bytebuf->bytes) (map bytes->string)))
 (def string->bytebuf (comp (map string->bytes) (map bytes->bytebuf)))
