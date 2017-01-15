@@ -1,6 +1,6 @@
 (defproject async-connect "0.1.0-SNAPSHOT"
-  :description "A tcp/ip server implementations for Clojure with core.async"
-  :url "http://example.com/FIXME"
+  :description "A tcp/ip server/client implementations for Clojure with core.async"
+  :url "https://github.com/tyano/async-connect"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
