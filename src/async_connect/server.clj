@@ -51,6 +51,12 @@
   (s/fspec :args (s/cat :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
            :ret  any?))
 
+(s/def :server.config/close-handler
+  (s/fspec :args [] :ret any?))
+
+(s/def :server.config/boss-group :netty/event-loop-group)
+(s/def :server.config/worker-group :netty/event-loop-group)
+
 (s/def ::config
   (s/keys
     :req [:server.config/server-handler]
@@ -58,7 +64,10 @@
           :server.config/write-channel-builder
           :server.config/port
           :server.config/channel-initializer
-          :server.config/bootstrap-initializer]))
+          :server.config/bootstrap-initializer
+          :server.config/boss-group
+          :server.config/worker-group
+          :server.config/close-handler]))
 
 
 
@@ -88,6 +97,9 @@
     (initializer bootstrap)
     bootstrap))
 
+(defprotocol IServer
+  (close-wait [this]))
+
 (s/fdef run-server
   :args (s/cat :read-channel ::spec/read-channel, :write-channel ::spec/write-channel, :config ::config)
   :ret  any?)
@@ -98,18 +110,20 @@
            :server.config/channel-initializer
            :server.config/bootstrap-initializer
            :server.config/read-channel-builder
-           :server.config/write-channel-builder]
+           :server.config/write-channel-builder
+           :server.config/boss-group
+           :server.config/worker-group
+           :server.config/close-handler]
       :or {port 8080
            read-channel-builder #(chan)
-           write-channel-builder #(chan)}
+           write-channel-builder #(chan)
+           boss-group (NioEventLoopGroup.)
+           worker-group (NioEventLoopGroup.)}
       :as config}]
 
   {:pre [config (:server.config/server-handler config)]}
 
-  (let [boss-group ^EventLoopGroup (NioEventLoopGroup.)
-        worker-group ^EventLoopGroup (NioEventLoopGroup.)]
-    (try
-      (let [bootstrap ^ServerBootstrap (.. ^ServerBootstrap (ServerBootstrap.)
+  (let [bootstrap ^ServerBootstrap (.. ^ServerBootstrap (ServerBootstrap.)
                                           (childHandler
                                             (proxy [ChannelInitializer] []
                                               (initChannel
@@ -121,23 +135,29 @@
                                                   (append-server-handler netty-ch read-ch write-ch)
                                                   (server-handler read-ch write-ch)))))
                                           (childOption ChannelOption/SO_KEEPALIVE true)
-                                          (group boss-group worker-group)
+                                          (group
+                                            ^EventLoopGroup boss-group
+                                            ^EventLoopGroup worker-group)
                                           (channel NioServerSocketChannel)
                                           (option ChannelOption/SO_BACKLOG (int 128))
                                           (option ChannelOption/WRITE_BUFFER_HIGH_WATER_MARK (int (* 32 1024)))
                                           (option ChannelOption/WRITE_BUFFER_LOW_WATER_MARK (int (* 8 1024)))
                                           (option ChannelOption/ALLOCATOR PooledByteBufAllocator/DEFAULT))]
 
-        (init-bootstrap bootstrap bootstrap-initializer)
+    (init-bootstrap bootstrap bootstrap-initializer)
 
-        (let [f ^ChannelFuture (.. bootstrap (bind (int port)) (sync))]
-          (log/info "SERVER STARTS AT" port)
-          (.. f
-            (channel)
-            (closeFuture)
-            (sync))))
+    (let [f ^ChannelFuture (.. bootstrap (bind (int port)) (sync))]
+      (reify
+        IServer
+        (close-wait [_]
+          (try
+            (.. f
+              (channel)
+              (closeFuture)
+              (sync))
+            (finally
+              (when close-handler (close-handler))
+              (.shutdownGracefully ^EventLoopGroup worker-group)
+              (.shutdownGracefully ^EventLoopGroup boss-group))))))))
 
-      (finally
-        (.shutdownGracefully worker-group)
-        (.shutdownGracefully boss-group)))))
 

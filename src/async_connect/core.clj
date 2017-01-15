@@ -1,5 +1,5 @@
 (ns async-connect.core
-  (:require [async-connect.server :refer [run-server] :as server]
+  (:require [async-connect.server :refer [run-server close-wait] :as server]
             [clojure.spec :as s]
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [chan go-loop <! >!]]
@@ -41,4 +41,5 @@
     (stest/instrument
       {:spec {'async-connect.server/run-server ::run-server-spec}})
 
-    (run-server config)))
+    (-> (run-server config)
+      (close-wait))))

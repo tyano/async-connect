@@ -10,7 +10,8 @@
            [io.netty.channel
               ChannelHandlerContext
               ChannelPromise
-              Channel]
+              Channel
+              EventLoopGroup]
            [io.netty.channel.nio
               NioEventLoopGroup]
            [io.netty.channel.socket
@@ -30,6 +31,7 @@
 (s/def :netty/bootstrap #(instance? Bootstrap %))
 (s/def :netty/server-bootstrap #(instance? ServerBootstrap %))
 (s/def :netty/socket-channel #(instance? SocketChannel %))
+(s/def :netty/event-loop-group #(instance? EventLoopGroup %))
 
 (s/def :netty/flush boolean?)
 (s/def :netty/close boolean?)
