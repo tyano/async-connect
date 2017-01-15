@@ -66,8 +66,7 @@
           :server.config/channel-initializer
           :server.config/bootstrap-initializer
           :server.config/boss-group
-          :server.config/worker-group
-          :server.config/close-handler]))
+          :server.config/worker-group]))
 
 
 
@@ -98,7 +97,7 @@
     bootstrap))
 
 (defprotocol IServer
-  (close-wait [this]))
+  (close-wait [this close-handler]))
 
 (s/fdef run-server
   :args (s/cat :read-channel ::spec/read-channel, :write-channel ::spec/write-channel, :config ::config)
@@ -112,8 +111,7 @@
            :server.config/read-channel-builder
            :server.config/write-channel-builder
            :server.config/boss-group
-           :server.config/worker-group
-           :server.config/close-handler]
+           :server.config/worker-group]
       :or {port 8080
            read-channel-builder #(chan)
            write-channel-builder #(chan)
@@ -149,7 +147,7 @@
     (let [f ^ChannelFuture (.. bootstrap (bind (int port)) (sync))]
       (reify
         IServer
-        (close-wait [_]
+        (close-wait [_ close-handler]
           (try
             (.. f
               (channel)

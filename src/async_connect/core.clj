@@ -42,4 +42,4 @@
       {:spec {'async-connect.server/run-server ::run-server-spec}})
 
     (-> (run-server config)
-      (close-wait))))
+      (close-wait #(println "SERVER STOPS.")))))
