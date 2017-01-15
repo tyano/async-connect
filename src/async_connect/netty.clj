@@ -18,7 +18,9 @@
               NioServerSocketChannel]
            [io.netty.buffer
               ByteBuf
-              Unpooled]))
+              Unpooled]
+           [io.netty.util
+              ReferenceCountUtil]))
 
 (s/def :netty/context #(instance? ChannelHandlerContext %))
 (s/def :netty/message any?)
@@ -51,19 +53,20 @@
           (Thread/sleep 200)
           (recur (.isWritable netty-ch)))))))
 
-(defn- bytebuf->bytes
+(defn bytebuf->bytes
   [data]
   (box/update data
     (fn [^ByteBuf buf]
       (let [bytes (byte-array (.readableBytes buf))]
         (.readBytes buf bytes)
+        (ReferenceCountUtil/safeRelease buf)
         bytes))))
 
-(defn- bytes->string
+(defn bytes->string
   [data]
   (box/update data #(String. ^bytes %)))
 
-(defn- string->bytes
+(defn string->bytes
   [data]
   (update data :message #(.getBytes ^String % "UTF-8")))
 
