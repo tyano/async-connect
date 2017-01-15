@@ -1,7 +1,8 @@
 (ns async-connect.netty
   (:require [clojure.spec :as s]
             [clojure.tools.logging :as log]
-            [async-connect.box :refer [boxed] :as box])
+            [async-connect.box :refer [boxed] :as box]
+            [clojure.core.async :refer [>!! <!! >! <! thread close! go go-loop]])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
            [io.netty.bootstrap
               Bootstrap
@@ -52,6 +53,50 @@
         (do
           (Thread/sleep 200)
           (recur (.isWritable netty-ch)))))))
+
+
+(s/def ::writedata
+  (s/keys
+    :req-un [:netty/message]
+    :opt-un [:netty/flush
+             :netty/close
+             :netty/channel-promise]))
+
+(defn channel-handler-context-start
+  [^ChannelHandlerContext ctx, write-ch]
+  (log/debug "context-start: " ctx)
+  (go-loop []
+    (if-some [{:keys [message flush? close? ^ChannelPromise promise]
+                 :or {flush? false
+                      close? false
+                      promise ^ChannelPromise (.voidPromise ctx)}
+                 :as data}
+                (<! write-ch)]
+      (do
+        (s/assert ::writedata data)
+        (thread
+          (write-if-possible ctx (or flush? close?) message promise)
+          (when close?
+            (.close ctx)))
+        (recur))
+      (log/debug "A writer-thread stops: " ctx))))
+
+(defn default-channel-inactive
+  [^ChannelHandlerContext ctx, read-ch, write-ch]
+  (log/debug "channel inactive: " ctx)
+  (close! read-ch)
+  (close! write-ch))
+
+(defn default-channel-read
+  [^ChannelHandlerContext ctx, ^Object msg, read-ch]
+  (log/debug "channel read: " ctx)
+  (>!! read-ch (boxed msg)))
+
+(defn default-exception-caught
+  [^ChannelHandlerContext ctx, ^Throwable th, read-ch]
+  (log/debug "exception-caught: " ctx)
+  (go (>! read-ch (boxed th)))
+  (.close ctx))
 
 (defn bytebuf->bytes
   [data]

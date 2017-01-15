@@ -3,7 +3,13 @@
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [>!! <!! >! <! thread close! chan go go-loop]]
             [async-connect.spec :as spec]
-            [async-connect.netty :refer [write-if-possible bytebuf->string string->bytebuf]]
+            [async-connect.netty :refer [write-if-possible
+                                         bytebuf->string
+                                         string->bytebuf
+                                         channel-handler-context-start
+                                         default-channel-inactive
+                                         default-channel-read
+                                         default-exception-caught]]
             [async-connect.netty.handler :refer [make-inbound-handler]]
             [async-connect.box :refer [boxed]])
   (:import [io.netty.bootstrap
@@ -73,41 +79,17 @@
 
 (defn make-client-inbound-handler-map
   [read-ch write-ch]
-  {:handler/handler-added
-    (fn [^ChannelHandlerContext ctx]
-      (log/debug "handler-added: " (.name ctx))
-      (go-loop []
-        (if-some [{:keys [message flush? close? ^ChannelPromise promise]
-                     :or {flush? false
-                          close? false
-                          promise ^ChannelPromise (.voidPromise ctx)}
-                     :as data}
-                    (<!! write-ch)]
-          (do
-            (s/assert ::writedata data)
-            (thread
-              (write-if-possible ctx (or flush? close?) message promise)
-              (when close?
-                (.close ctx)))
-            (recur))
-          (log/debug "A writer-thread stops: " (.name ctx)))))
+  {:inbound/channel-read
+    (fn [ctx msg] (default-channel-read ctx msg read-ch))
 
-   :inbound/channel-read
-    (fn [^ChannelHandlerContext ctx, ^Object msg]
-      (log/trace "channel-read")
-      (>!! read-ch (boxed msg)))
+   :handler/handler-added
+    (fn [ctx] (channel-handler-context-start ctx write-ch))
 
    :inbound/channel-inactive
-    (fn [^ChannelHandlerContext ctx]
-      (log/debug "channel-inactive")
-      (close! read-ch)
-      (close! write-ch))
+    (fn [ctx] (default-channel-inactive ctx read-ch write-ch))
 
    :inbound/exception-caught
-    (fn [^ChannelHandlerContext ctx, ^Throwable th]
-      (log/debug "exception-caught")
-      (go (>! read-ch (boxed th)))
-      (.close ctx))})
+    (fn [ctx, th] (default-exception-caught ctx th))})
 
 
 (defn add-client-handler
@@ -120,7 +102,7 @@
         (.remove pipeline handler-name))
       (.addLast pipeline
         handler-name
-        (make-inbound-handler (make-client-inbound-handler-map read-ch write-ch))))))
+        ^ChannelHandler (make-inbound-handler (make-client-inbound-handler-map read-ch write-ch))))))
 
 
 (defn- init-bootstrap
