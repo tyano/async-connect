@@ -95,9 +95,8 @@
     (pooled-connection-factory (client/connection-factory))))
 
 (defn sample-connect
-  []
-  (let [factory  (pooled-connection-factory)
-        read-ch  (chan 1 bytebuf->string)
+  [factory]
+  (let [read-ch  (chan 1 bytebuf->string)
         write-ch (chan 1 string->bytebuf)
         conn     (client/connect factory "localhost" 8080 read-ch write-ch)]
     (go-loop []
