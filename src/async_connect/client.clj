@@ -173,8 +173,42 @@
     (assoc connection :client/channel nil)))
 
 
+(defprotocol IConnectionFactory
+  (create-connection [this host port read-ch write-ch]
+    "Connect to a `port` of a `host` using `bootstrap`, and return a IConnection object.
+     If read-ch and write-ch are supplied, all data written and read are transfered to the supplied channels,
+     If read-ch and write-ch aren't supplied, channels made by `(chan)` are used."))
+
+
+(s/def ::connection-factory #(satisfies? IConnectionFactory %))
+
+(defn- connect*
+  [^Bootstrap bootstrap ^String host port read-ch write-ch]
+  (let [read-chan  (or read-ch (chan))
+        write-chan (or write-ch (chan))
+        channel (.. bootstrap (connect host (int port)) (sync) (channel))]
+
+    (add-client-handler channel read-chan write-chan)
+
+    (map->NettyConnection {:client/channel  channel
+                           :client/read-ch  read-chan
+                           :client/write-ch write-chan})))
+
+(defrecord NettyConnectionFactory
+  [bootstrap]
+  IConnectionFactory
+  (create-connection
+    [this host port read-ch write-ch]
+    (connect* bootstrap host port read-ch write-ch)))
+
+(defn connection-factory
+  ([bootstrap]
+    (->NettyConnectionFactory bootstrap))
+  ([]
+    (connection-factory (make-bootstrap {}))))
+
 (s/fdef connect
-  :args (s/cat :bootstrap :netty/bootstrap,
+  :args (s/cat :factory   ::connection-factory
                :host      string?
                :port      pos-int?
                :read-ch   (s/? (s/nilable :client/read-ch))
@@ -182,22 +216,11 @@
   :ret  :client/connection)
 
 (defn connect
-  "Connect to a `port` of a `host` using `bootstrap`, and return a IConnection object.
-   If read-ch and write-ch are supplied, all data written and read are transfered to the supplied channels,
-   If read-ch and write-ch aren't supplied, channels made by `(chan)` are used."
-  ([^Bootstrap bootstrap ^String host port read-ch write-ch]
-    (let [read-chan  (or read-ch (chan))
-          write-chan (or write-ch (chan))
-          channel (.. bootstrap (connect host (int port)) (sync) (channel))]
+  ([factory host port read-ch write-ch]
+    (create-connection factory host port read-ch write-ch))
 
-      (add-client-handler channel read-chan write-chan)
-
-      (map->NettyConnection {:client/channel  channel
-                             :client/read-ch  read-chan
-                             :client/write-ch write-chan})))
-
-  ([^Bootstrap bootstrap host port]
-    (connect bootstrap host port nil nil)))
+  ([factory host port]
+    (create-connection factory host port nil nil)))
 
 
 (s/fdef closed?
@@ -210,10 +233,10 @@
 
 (defn sample-connect
   []
-  (let [bootstrap (make-bootstrap {})
+  (let [factory  (connection-factory)
         read-ch  (chan 1 bytebuf->string)
         write-ch (chan 1 string->bytebuf)
-        conn     (connect bootstrap "localhost" 8080 read-ch write-ch)]
+        conn     (connect factory "localhost" 8080 read-ch write-ch)]
     (go-loop []
       (println "result: " @(<! read-ch))
       (recur))
