@@ -36,7 +36,7 @@
         (vswap! pooled-connections update pool-key #(if % [conn] (conj % conn))))
       nil)))
 
-(defn connect*
+(defn- connect*
   "Connect to a `port` of a `host` using `factory`, and return a IConnection object, but before making
    a new real connection, this fn checks a pool containing already connected connections and if the pool
    have a connection with same address and port, this fn don't make a new connection but return the found
