@@ -34,7 +34,6 @@
               NioSocketChannel]))
 
 
-(s/def :client.config/port pos-int?)
 (s/def :client.config/channel-initializer
   (s/fspec :args (s/cat :netty-channel :netty/socket-channel
                         :config ::config)
@@ -46,7 +45,6 @@
 
 (s/def ::config
   (s/keys
-    :req [:client.config/port]
     :opt [:client.config/bootstrap-initializer
           :client.config/channel-initializer]))
 
@@ -136,7 +134,7 @@
                             (initChannel
                               [^SocketChannel ch]
                               (when channel-initializer
-                                (channel-initializer ch))
+                                (channel-initializer ch config))
                               nil))))]
         (init-bootstrap bootstrap bootstrap-initializer))))
   ([]
@@ -152,6 +150,29 @@
           :client/read-ch
           :client/write-ch]))
 
+(s/fdef close
+  :args (s/cat :connection :client/connection)
+  :ret  :client/connection)
+
+(defprotocol IConnection
+  (close [this]
+    "Close this connection. In simple implementation, a netty connection held by this connection will be closed.
+    If this connection uses a kind of connection pools, calling `close` will not close a read connection, but
+    return the connection to a pool."))
+
+(defrecord NettyConnection []
+  IConnection
+  (close
+    [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
+    (when channel
+      (.. ^SocketChannel channel (close) (sync))
+      (log/debug "connection closed: " channel))
+
+    (when read-ch (close! read-ch))
+    (when write-ch (close! write-ch))
+    (assoc connection :client/channel nil)))
+
+
 (s/fdef connect
   :args (s/cat :bootstrap :netty/bootstrap,
                :host      string?
@@ -161,6 +182,9 @@
   :ret  :client/connection)
 
 (defn connect
+  "Connect to a `port` of a `host` using `bootstrap`, and return a IConnection object.
+   If read-ch and write-ch are supplied, all data written and read are transfered to the supplied channels,
+   If read-ch and write-ch aren't supplied, channels made by `(chan)` are used."
   ([^Bootstrap bootstrap ^String host port read-ch write-ch]
     (let [read-chan  (or read-ch (chan))
           write-chan (or write-ch (chan))
@@ -168,25 +192,13 @@
 
       (add-client-handler channel read-chan write-chan)
 
-      {:client/channel  channel
-       :client/read-ch  read-chan
-       :client/write-ch write-chan}))
+      (map->NettyConnection {:client/channel  channel
+                             :client/read-ch  read-chan
+                             :client/write-ch write-chan})))
 
   ([^Bootstrap bootstrap host port]
     (connect bootstrap host port nil nil)))
 
-(s/fdef close
-  :args (s/cat :connection :client/connection)
-  :ret  :client/connection)
-
-(defn close
-  [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
-  (when channel
-    (.. ^SocketChannel channel (close) (sync))
-    (log/debug "connection closed: " channel)
-    (close! read-ch)
-    (close! write-ch)
-    (assoc connection :client/channel nil)))
 
 (s/fdef closed?
   :args (s/cat :connection :client/connection)
