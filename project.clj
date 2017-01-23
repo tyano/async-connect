@@ -16,4 +16,5 @@
              :release
               {:resource-paths ["resources-release"]}}
 
-  :main async-connect.core)
+  :main async-connect.core
+  :aot [async-connect.core])

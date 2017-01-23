@@ -85,18 +85,18 @@
 
 (defn default-channel-inactive
   [^ChannelHandlerContext ctx, read-ch, write-ch]
-  (log/debug "channel inactive: " ctx)
+  (log/trace "channel inactive: " ctx)
   (close! read-ch)
   (close! write-ch))
 
 (defn default-channel-read
   [^ChannelHandlerContext ctx, ^Object msg, read-ch]
-  (log/debug "channel read: " ctx)
+  (log/trace "channel read: " ctx)
   (>!! read-ch (boxed msg)))
 
 (defn default-exception-caught
   [^ChannelHandlerContext ctx, ^Throwable th, read-ch]
-  (log/debug "exception-caught: " ctx)
+  (log/trace "exception-caught: " ctx)
   (go (>! read-ch (boxed th)))
   (.close ctx))
 

@@ -93,7 +93,7 @@
 (defn add-client-handler
   [^SocketChannel netty-channel read-ch write-ch]
   (when netty-channel
-    (log/debug "add-client-handler: " netty-channel)
+    (log/trace "add-client-handler: " netty-channel)
     (let [handler-name "async-connect-client"
           pipeline     ^ChannelPipeline (.pipeline netty-channel)]
       (when (.context pipeline handler-name)
@@ -188,6 +188,7 @@
         write-chan (or write-ch (chan))
         channel (.. bootstrap (connect host (int port)) (sync) (channel))]
 
+    (log/debug "connected:" (str "host: " host ", port: " port))
     (add-client-handler channel read-chan write-chan)
 
     (map->NettyConnection {:client/channel  channel
@@ -199,7 +200,7 @@
   IConnectionFactory
   (create-connection
     [this host port read-ch write-ch]
-    (connect* bootstrap host port read-ch write-ch)))
+    (connect* (:bootstrap this) host port read-ch write-ch)))
 
 (defn connection-factory
   ([bootstrap]
@@ -217,9 +218,11 @@
 
 (defn connect
   ([factory host port read-ch write-ch]
+    (log/trace "async: connect:" factory)
     (create-connection factory host port read-ch write-ch))
 
   ([factory host port]
+    (log/trace "async: connect:" factory)
     (create-connection factory host port nil nil)))
 
 

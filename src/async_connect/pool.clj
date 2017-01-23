@@ -21,19 +21,23 @@
   [pooled-connections {:keys [:pool/host :pool/port] :as conn}]
   (let [pool-key {:pool/host host, :pool/port port}]
     (locking pooled-connections
-      (log/debug "removing a connection:" conn)
+      (log/trace "removing a connection:" conn)
       (vswap! pooled-connections update pool-key #(when % (vec (filter (fn [c] (not= c conn)) %)))))
     nil))
 
 (defrecord PooledConnection
-  [pooled-connections]
+  [pooled-connections])
+
+(extend-type PooledConnection
   IConnection
   (close
     [{:keys [:pool/host :pool/port] :as conn}]
-    (let [pool-key {:pool/host host, :pool/port port}]
+    (let [pool-key {:pool/host host, :pool/port port}
+          pooled-connections (:pooled-connections conn)]
       (locking pooled-connections
-        (log/debug "returning a connection:" conn)
-        (vswap! pooled-connections update pool-key #(if % [conn] (conj % conn))))
+        (let [torn-conn (dissoc conn :pooled-connections)]
+          (log/trace "returning a connection:" torn-conn)
+          (vswap! pooled-connections update pool-key #(if % [torn-conn] (conj % torn-conn)))))
       nil)))
 
 (defn- connect*
@@ -51,10 +55,12 @@
         (vswap! pooled-connections update pool-key (fn [_] (vec (rest conns))))
         (if found
           (do
-            (log/debug "a pooled connection is found: " found)
-            found)
+            (log/trace (str "a pooled connection is found for: " pool-key ", found: " found))
+            ;; returned connection don't have :pooled-connections key,
+            ;; so we need to reassign it and create a new PooledConnection from the reassigned map.
+            (map->PooledConnection (assoc found :pooled-connections pooled-connections)))
           (do
-            (log/debug "no pooled connection is found. create a new one.")
+            (log/trace "no pooled connection is found. create a new one.")
             (let [{:keys [:client/channel] :as new-conn}
                       (merge (->PooledConnection pooled-connections)
                             (client/connect factory host port read-ch write-ch)
@@ -74,13 +80,13 @@
               new-conn)))))))
 
 (defrecord PooledNettyConnectionFactory
-  [factory pooled-connections]
+  [factory pooled-connections])
 
+(extend-type PooledNettyConnectionFactory
   IConnectionFactory
   (create-connection
     [this host port read-ch write-ch]
-    (connect* factory pooled-connections host port read-ch write-ch)))
-
+    (connect* (:factory this) (:pooled-connections this) host port read-ch write-ch)))
 
 (defn create-default-pool
   []
