@@ -155,22 +155,31 @@
   :ret  :client/connection)
 
 (defprotocol IConnection
-  (close [this]
+  (close [this] [this force?]
     "Close this connection. In simple implementation, a netty connection held by this connection will be closed.
     If this connection uses a kind of connection pools, calling `close` will not close a read connection, but
-    return the connection to a pool."))
+    return the connection to a pool.
+    if `force?` is true, the connection must be really closed instead of returning it into a pool."))
+
+(defn close-connection
+  [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
+  (when channel
+    (.. ^SocketChannel channel (close) (sync))
+    (log/debug "connection closed: " channel))
+
+  (when read-ch (close! read-ch))
+  (when write-ch (close! write-ch))
+  (assoc connection :client/channel nil))
+
 
 (defrecord NettyConnection []
   IConnection
   (close
-    [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
-    (when channel
-      (.. ^SocketChannel channel (close) (sync))
-      (log/debug "connection closed: " channel))
+    [connection force?]
+    (close-connection connection))
 
-    (when read-ch (close! read-ch))
-    (when write-ch (close! write-ch))
-    (assoc connection :client/channel nil)))
+  (close [this]
+    (close this false)))
 
 
 (defprotocol IConnectionFactory

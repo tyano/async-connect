@@ -31,14 +31,19 @@
 (extend-type PooledConnection
   IConnection
   (close
-    [{:keys [:pool/host :pool/port] :as conn}]
-    (let [pool-key {:pool/host host, :pool/port port}
-          pooled-connections (:pooled-connections conn)]
-      (locking pooled-connections
-        (let [torn-conn (dissoc conn :pooled-connections)]
-          (log/trace "returning a connection:" torn-conn)
-          (vswap! pooled-connections update pool-key #(if % [torn-conn] (conj % torn-conn)))))
-      nil)))
+    ([{:keys [:pool/host :pool/port] :as conn} force?]
+      (if force?
+        (client/close-connection conn)
+        (let [pool-key {:pool/host host, :pool/port port}
+              pooled-connections (:pooled-connections conn)]
+          (locking pooled-connections
+            (let [torn-conn (dissoc conn :pooled-connections)]
+              (log/trace "returning a connection:" torn-conn)
+              (vswap! pooled-connections update pool-key #(if % [torn-conn] (conj % torn-conn)))))
+          nil)))
+
+    ([this]
+      (client/close this false))))
 
 (defn- connect*
   "Connect to a `port` of a `host` using `factory`, and return a IConnection object, but before making
