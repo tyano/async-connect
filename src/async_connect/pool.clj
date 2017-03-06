@@ -39,7 +39,7 @@
           (locking pooled-connections
             (let [torn-conn (dissoc conn :pooled-connections)]
               (log/trace "returning a connection:" torn-conn)
-              (vswap! pooled-connections update pool-key #(if % [torn-conn] (conj % torn-conn)))))
+              (vswap! pooled-connections update pool-key #(if % (conj % torn-conn) [torn-conn]))))
           nil)))
 
     ([this]
