@@ -8,9 +8,15 @@
   (:import [io.netty.channel.socket
               SocketChannel]
            [io.netty.channel
-              ChannelFutureListener]
+              ChannelFutureListener
+              ChannelHandlerContext
+              ChannelDuplexHandler]
            [io.netty.bootstrap
-              Bootstrap]))
+              Bootstrap]
+           [io.netty.handler.timeout
+              IdleStateHandler
+              IdleStateEvent
+              IdleState]))
 
 (s/def :pool/host string?)
 (s/def :pool/port pos-int?)
@@ -24,6 +30,30 @@
       (log/trace "removing a connection:" conn)
       (vswap! pooled-connections update pool-key #(when % (vec (filter (fn [c] (not= c conn)) %)))))
     nil))
+
+(defn- make-idle-state-handler
+  [timeout-sec]
+  (IdleStateHandler. (int 0) (int 0) (int (or timeout-sec 0))))
+
+(defn- make-idle-event-handler
+  [{:keys [:pool/host :pool/port] :as conn}]
+  (proxy [ChannelDuplexHandler] []
+    (userEventTriggered
+      [^ChannelHandlerContext ctx, ^Object evt]
+      (when (and (instance? IdleStateEvent evt)
+                 (= (.state ^IdleStateEvent evt) IdleState/ALL_IDLE))
+
+        ;; remove this connection from connection-pool.
+        (let [pool-key {:pool/host host, :pool/port port}
+              pooled-connections (:pooled-connections conn)]
+          (locking pooled-connections
+            (let [torn-conn (dissoc conn :pooled-connections)]
+              (log/trace "remove a connection:" (pr-str torn-conn))
+              (vswap! pooled-connections update pool-key #(when % (vec (filter (partial not= torn-conn) %)))))))
+
+        ;; and close it.
+        (log/debug "connection idle timeout. closed : " (pr-str (dissoc conn :pooled-connections)))
+        (client/close conn true)))))
 
 (defrecord PooledConnection
   [pooled-connections])
@@ -39,7 +69,7 @@
           (locking pooled-connections
             (let [torn-conn (dissoc conn :pooled-connections)]
               (log/trace "returning a connection:" torn-conn)
-              (vswap! pooled-connections update pool-key #(if % (conj % torn-conn) [torn-conn]))))
+              (vswap! pooled-connections update pool-key #(if % (vec (cons torn-conn %)) [torn-conn]))))
           nil)))
 
     ([this]
@@ -52,7 +82,7 @@
    connection.
    If read-ch and write-ch are supplied, all data written and read are transfered to the supplied channels,
    If read-ch and write-ch aren't supplied, channels made by `(chan)` are used."
-  [factory pooled-connections ^String host port read-ch write-ch]
+  [factory pooled-connections idle-timeout-sec ^String host port read-ch write-ch]
   (let [pool-key {:pool/host host, :pool/port port}]
     (locking pooled-connections
       (let [conns (get @pooled-connections pool-key)
@@ -72,6 +102,12 @@
                             {:pool/host host
                              :pool/port port})]
 
+              ;; add an IdleStateHandler to a pipeline of this netty channel.
+              (let [pipeline (.pipeline channel)]
+                (.. pipeline
+                  (addFirst "idleEventHandler" (make-idle-event-handler new-conn))
+                  (addFirst "idleStateHandler" (make-idle-state-handler idle-timeout-sec))))
+
               ;; remove this new-conn from our connection-pool when this channel is closed.
               (thread
                 (.. ^SocketChannel channel
@@ -85,25 +121,25 @@
               new-conn)))))))
 
 (defrecord PooledNettyConnectionFactory
-  [factory pooled-connections])
+  [factory pooled-connections idle-timeout-sec])
 
 (extend-type PooledNettyConnectionFactory
   IConnectionFactory
   (create-connection
     [this host port read-ch write-ch]
-    (connect* (:factory this) (:pooled-connections this) host port read-ch write-ch)))
+    (connect* (:factory this) (:pooled-connections this) (:idle-timeout-sec this) host port read-ch write-ch)))
 
 (defn create-default-pool
   []
   (volatile! {}))
 
 (defn pooled-connection-factory
-  ([factory pool]
-    (->PooledNettyConnectionFactory factory pool))
-  ([factory]
-    (pooled-connection-factory factory (create-default-pool)))
-  ([]
-    (pooled-connection-factory (client/connection-factory))))
+  ([factory pool idle-timeout-sec]
+    (->PooledNettyConnectionFactory factory pool idle-timeout-sec))
+  ([factory idle-timeout-sec]
+    (pooled-connection-factory factory (create-default-pool) idle-timeout-sec))
+  ([idle-timeout-sec]
+    (pooled-connection-factory (client/connection-factory) idle-timeout-sec)))
 
 (defn sample-connect
   [factory]
