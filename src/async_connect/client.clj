@@ -34,7 +34,6 @@
               NioSocketChannel]))
 
 
-(s/def :client.config/port pos-int?)
 (s/def :client.config/channel-initializer
   (s/fspec :args (s/cat :netty-channel :netty/socket-channel
                         :config ::config)
@@ -46,7 +45,6 @@
 
 (s/def ::config
   (s/keys
-    :req [:client.config/port]
     :opt [:client.config/bootstrap-initializer
           :client.config/channel-initializer]))
 
@@ -95,7 +93,7 @@
 (defn add-client-handler
   [^SocketChannel netty-channel read-ch write-ch]
   (when netty-channel
-    (log/debug "add-client-handler: " netty-channel)
+    (log/trace "add-client-handler: " netty-channel)
     (let [handler-name "async-connect-client"
           pipeline     ^ChannelPipeline (.pipeline netty-channel)]
       (when (.context pipeline handler-name)
@@ -136,7 +134,7 @@
                             (initChannel
                               [^SocketChannel ch]
                               (when channel-initializer
-                                (channel-initializer ch))
+                                (channel-initializer ch config))
                               nil))))]
         (init-bootstrap bootstrap bootstrap-initializer))))
   ([]
@@ -152,8 +150,75 @@
           :client/read-ch
           :client/write-ch]))
 
+(s/fdef close
+  :args (s/cat :connection :client/connection)
+  :ret  :client/connection)
+
+(defprotocol IConnection
+  (close [this] [this force?]
+    "Close this connection. In simple implementation, a netty connection held by this connection will be closed.
+    If this connection uses a kind of connection pools, calling `close` will not close a read connection, but
+    return the connection to a pool.
+    if `force?` is true, the connection must be really closed instead of returning it into a pool."))
+
+(defn close-connection
+  [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
+  (when channel
+    (.. ^SocketChannel channel (close) (sync))
+    (log/debug "connection closed: " channel))
+
+  (when read-ch (close! read-ch))
+  (when write-ch (close! write-ch))
+  (assoc connection :client/channel nil))
+
+
+(defrecord NettyConnection []
+  IConnection
+  (close
+    [connection force?]
+    (close-connection connection))
+
+  (close [this]
+    (close this false)))
+
+
+(defprotocol IConnectionFactory
+  (create-connection [this host port read-ch write-ch]
+    "Connect to a `port` of a `host` using `bootstrap`, and return a IConnection object.
+     If read-ch and write-ch are supplied, all data written and read are transfered to the supplied channels,
+     If read-ch and write-ch aren't supplied, channels made by `(chan)` are used."))
+
+
+(s/def ::connection-factory #(satisfies? IConnectionFactory %))
+
+(defn- connect*
+  [^Bootstrap bootstrap ^String host port read-ch write-ch]
+  (let [read-chan  (or read-ch (chan))
+        write-chan (or write-ch (chan))
+        channel (.. bootstrap (connect host (int port)) (sync) (channel))]
+
+    (log/debug "connected:" (str "host: " host ", port: " port))
+    (add-client-handler channel read-chan write-chan)
+
+    (map->NettyConnection {:client/channel  channel
+                           :client/read-ch  read-chan
+                           :client/write-ch write-chan})))
+
+(defrecord NettyConnectionFactory
+  [bootstrap]
+  IConnectionFactory
+  (create-connection
+    [this host port read-ch write-ch]
+    (connect* (:bootstrap this) host port read-ch write-ch)))
+
+(defn connection-factory
+  ([bootstrap]
+    (->NettyConnectionFactory bootstrap))
+  ([]
+    (connection-factory (make-bootstrap {}))))
+
 (s/fdef connect
-  :args (s/cat :bootstrap :netty/bootstrap,
+  :args (s/cat :factory   ::connection-factory
                :host      string?
                :port      pos-int?
                :read-ch   (s/? (s/nilable :client/read-ch))
@@ -161,32 +226,14 @@
   :ret  :client/connection)
 
 (defn connect
-  ([^Bootstrap bootstrap ^String host port read-ch write-ch]
-    (let [read-chan  (or read-ch (chan))
-          write-chan (or write-ch (chan))
-          channel (.. bootstrap (connect host (int port)) (sync) (channel))]
+  ([factory host port read-ch write-ch]
+    (log/trace "async: connect:" factory)
+    (create-connection factory host port read-ch write-ch))
 
-      (add-client-handler channel read-chan write-chan)
+  ([factory host port]
+    (log/trace "async: connect:" factory)
+    (create-connection factory host port nil nil)))
 
-      {:client/channel  channel
-       :client/read-ch  read-chan
-       :client/write-ch write-chan}))
-
-  ([^Bootstrap bootstrap host port]
-    (connect bootstrap host port nil nil)))
-
-(s/fdef close
-  :args (s/cat :connection :client/connection)
-  :ret  :client/connection)
-
-(defn close
-  [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
-  (when channel
-    (.. ^SocketChannel channel (close) (sync))
-    (log/debug "connection closed: " channel)
-    (close! read-ch)
-    (close! write-ch)
-    (assoc connection :client/channel nil)))
 
 (s/fdef closed?
   :args (s/cat :connection :client/connection)
@@ -198,10 +245,10 @@
 
 (defn sample-connect
   []
-  (let [bootstrap (make-bootstrap {})
+  (let [factory  (connection-factory)
         read-ch  (chan 1 bytebuf->string)
         write-ch (chan 1 string->bytebuf)
-        conn     (connect bootstrap "localhost" 8080 read-ch write-ch)]
+        conn     (connect factory "localhost" 8080 read-ch write-ch)]
     (go-loop []
       (println "result: " @(<! read-ch))
       (recur))
