@@ -1,5 +1,7 @@
 (ns async-connect.client
   (:require [clojure.spec :as s]
+            [clojure.spec.gen :as gen]
+            [clojure.spec.test :refer [with-instrument-disabled]]
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [>!! <!! >! <! thread close! chan go go-loop]]
             [async-connect.spec :as spec]
@@ -44,16 +46,16 @@
            :ret  :netty/bootstrap))
 
 (s/def ::config
-  (s/keys
-    :opt [:client.config/bootstrap-initializer
-          :client.config/channel-initializer]))
-
-(s/def ::writedata
-  (s/keys
-    :req-un [:netty/message]
-    :opt-un [:netty/flush
-             :netty/close
-             :netty/channel-promise]))
+  (s/with-gen
+    (s/keys
+      :opt [:client.config/bootstrap-initializer
+            :client.config/channel-initializer])
+    #(gen/one-of
+        {}
+        {:client.config/bootstrap-initializer (fn [bootstrap] bootstrap)}
+        {:client.config/channel-initializer   (fn [channel config] channel)}
+        {:client.config/bootstrap-initializer (fn [bootstrap] bootstrap)
+         :client.config/channel-initializer   (fn [channel config] channel)})))
 
 (defn add-future-listener
   [^ChannelPromise prms read-ch]
@@ -87,7 +89,7 @@
     (fn [ctx] (default-channel-inactive ctx read-ch write-ch))
 
    :inbound/exception-caught
-    (fn [ctx, th] (default-exception-caught ctx th))})
+    (fn [ctx, th] (default-exception-caught ctx th read-ch))})
 
 
 (defn add-client-handler
@@ -100,7 +102,7 @@
         (.remove pipeline handler-name))
       (.addLast pipeline
         handler-name
-        ^ChannelHandler (make-inbound-handler (make-client-inbound-handler-map read-ch write-ch))))))
+        ^ChannelHandler (with-instrument-disabled (make-inbound-handler (make-client-inbound-handler-map read-ch write-ch)))))))
 
 
 (defn- init-bootstrap
@@ -151,7 +153,7 @@
           :client/write-ch]))
 
 (s/fdef close
-  :args (s/cat :connection :client/connection)
+  :args (s/cat :connection :client/connection :close? (s/? boolean?))
   :ret  :client/connection)
 
 (defprotocol IConnection

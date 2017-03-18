@@ -1,48 +1,21 @@
 (ns async-connect.netty
   (:require [clojure.spec :as s]
+            [clojure.spec.gen :as gen]
+            [async-connect.spec.generator :as agen]
+            [async-connect.netty.spec]
             [clojure.tools.logging :as log]
             [async-connect.box :refer [boxed] :as box]
             [clojure.core.async :refer [>!! <!! >! <! thread close! go go-loop]])
-  (:import [clojure.core.async.impl.channels ManyToManyChannel]
-           [io.netty.bootstrap
-              Bootstrap
-              ServerBootstrap]
+  (:import [io.netty.buffer
+              ByteBuf
+              Unpooled]
            [io.netty.channel
               ChannelHandlerContext
               ChannelPromise
-              Channel
-              EventLoopGroup]
-           [io.netty.channel.nio
-              NioEventLoopGroup]
-           [io.netty.channel.socket
-              SocketChannel]
-           [io.netty.channel.socket.nio
-              NioServerSocketChannel]
-           [io.netty.buffer
-              ByteBuf
-              Unpooled]
+              Channel]
            [io.netty.util
               ReferenceCountUtil]))
 
-(s/def :netty/context #(instance? ChannelHandlerContext %))
-(s/def :netty/message any?)
-(s/def :netty/channel-promise #(instance? ChannelPromise %))
-(s/def :netty/channel #(instance? Channel %))
-(s/def :netty/bootstrap #(instance? Bootstrap %))
-(s/def :netty/server-bootstrap #(instance? ServerBootstrap %))
-(s/def :netty/socket-channel #(instance? SocketChannel %))
-(s/def :netty/event-loop-group #(instance? EventLoopGroup %))
-
-(s/def :netty/flush boolean?)
-(s/def :netty/close boolean?)
-
-(s/def :netty/writedata
-  (s/keys
-    :req-un [:netty/context
-             :netty/message]
-    :opt-un [:netty/flush
-             :netty/close
-             :netty/channel-promise]))
 
 (defn write-if-possible
   [^ChannelHandlerContext ctx, flush?, data, ^ChannelPromise promise]
@@ -57,12 +30,14 @@
           (recur (.isWritable netty-ch)))))))
 
 
+(s/def :writedata/promise :netty/channel-promise)
+
 (s/def ::writedata
   (s/keys
     :req-un [:netty/message]
-    :opt-un [:netty/flush
-             :netty/close
-             :netty/channel-promise]))
+    :opt-un [:netty/flush?
+             :netty/close?
+             :writedata/promise]))
 
 (defn channel-handler-context-start
   [^ChannelHandlerContext ctx, write-ch]

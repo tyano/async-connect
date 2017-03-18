@@ -1,5 +1,7 @@
 (ns async-connect.server
   (:require [clojure.spec :as s]
+            [clojure.spec.gen :as gen]
+            [clojure.spec.test :refer [with-instrument-disabled]]
             [clojure.core.async :refer [>!! <!! >! <! go go-loop thread chan close!]]
             [clojure.tools.logging :as log]
             [async-connect.netty :refer [write-if-possible
@@ -33,41 +35,50 @@
 (s/def :server.config/port pos-int?)
 
 (s/def :server.config/channel-initializer
-  (s/fspec :args (s/cat :netty-channel :netty/socket-channel
-                        :config ::config)
-           :ret :netty/socket-channel))
+  (s/fspec :args (s/cat :netty-channel :netty/channel
+                        :config ::config-no-initializer)
+           :ret :netty/channel))
 
 (s/def :server.config/bootstrap-initializer
   (s/fspec :args (s/cat :bootstrap :netty/server-bootstrap)
            :ret  :netty/server-bootstrap))
 
 (s/def :server.config/read-channel-builder
-  (s/fspec :args [] :ret ::spec/read-channel))
+  (s/fspec :args empty? :ret ::spec/read-channel))
 
 (s/def :server.config/write-channel-builder
-  (s/fspec :args [] :ret ::spec/write-channel))
+  (s/fspec :args empty? :ret ::spec/write-channel))
 
 (s/def :server.config/server-handler
   (s/fspec :args (s/cat :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
            :ret  any?))
 
 (s/def :server.config/close-handler
-  (s/fspec :args [] :ret any?))
+  (s/fspec :args empty? :ret any?))
 
 (s/def :server.config/boss-group :netty/event-loop-group)
 (s/def :server.config/worker-group :netty/event-loop-group)
 
-(s/def ::config
-  (s/keys
-    :req [:server.config/server-handler]
-    :opt [:server.config/read-channel-builder
-          :server.config/write-channel-builder
-          :server.config/port
-          :server.config/channel-initializer
-          :server.config/bootstrap-initializer
-          :server.config/boss-group
-          :server.config/worker-group]))
+(s/def ::config-no-initializer
+  (s/with-gen
+    (s/keys
+      :req [:server.config/server-handler]
+      :opt [:server.config/read-channel-builder
+            :server.config/write-channel-builder
+            :server.config/port
+            :server.config/bootstrap-initializer
+            :server.config/boss-group
+            :server.config/worker-group])
+    #(gen/return
+        {:server.config/server-handler (fn [read-ch write-ch] nil)})))
 
+(s/def ::config
+  (s/with-gen
+    (s/merge
+      (s/keys :opt [:server.config/channel-initializer])
+      ::config-no-initializer)
+    #(gen/return
+        {:server.config/server-handler (fn [read-ch write-ch] nil)})))
 
 
 (defn make-default-handler-map
@@ -82,13 +93,15 @@
     (fn [ctx] (default-channel-inactive ctx read-ch write-ch))
 
    :inbound/exception-caught
-    (fn [ctx, th] (default-exception-caught ctx th))})
+    (fn [ctx, th] (default-exception-caught ctx th read-ch))})
 
 (defn append-server-handler
   [^SocketChannel netty-ch read-ch write-ch]
   (.. netty-ch
     (pipeline)
-    (addLast "async-connect-server" ^ChannelHandler (make-inbound-handler (make-default-handler-map read-ch write-ch)))))
+    (addLast
+        "async-connect-server"
+        ^ChannelHandler (with-instrument-disabled (make-inbound-handler (make-default-handler-map read-ch write-ch))))))
 
 (defn- init-bootstrap
   [bootstrap initializer]
@@ -100,8 +113,8 @@
   (close-wait [this close-handler]))
 
 (s/fdef run-server
-  :args (s/cat :read-channel ::spec/read-channel, :write-channel ::spec/write-channel, :config ::config)
-  :ret  any?)
+  :args (s/cat :config ::config)
+  :ret  #(instance? IServer %))
 
 (defn run-server
   [{:keys [:server.config/server-handler
@@ -125,7 +138,7 @@
                                           (childHandler
                                             (proxy [ChannelInitializer] []
                                               (initChannel
-                                                [^SocketChannel netty-ch]
+                                                [^Channel netty-ch]
                                                 (when channel-initializer
                                                   (channel-initializer netty-ch config))
                                                 (let [read-ch  (read-channel-builder)

@@ -1,10 +1,12 @@
 (ns async-connect.spec
-  (:require [clojure.spec :as s])
+  (:require [clojure.spec :as s]
+            [async-connect.spec.generator :as gen]
+            [clojure.core.async :refer [chan]])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
            [clojure.core.async.impl.protocols ReadPort WritePort]))
 
-(s/def ::async-channel #(instance? ManyToManyChannel %))
-(s/def ::read-channel  #(instance? ReadPort %))
-(s/def ::write-channel  #(instance? WritePort %))
-(s/def ::atom #(instance? clojure.lang.Atom %))
+(s/def ::async-channel (s/with-gen #(instance? ManyToManyChannel %) #(gen/create (chan))))
+(s/def ::read-channel  (s/with-gen #(instance? ReadPort %) #(gen/create (chan))))
+(s/def ::write-channel  (s/with-gen #(instance? WritePort %) #(gen/create (chan))))
+(s/def ::atom (s/with-gen #(instance? clojure.lang.Atom %) #(gen/create (atom {}))))
 

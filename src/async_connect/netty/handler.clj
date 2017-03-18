@@ -1,5 +1,8 @@
 (ns async-connect.netty.handler
-  (:require [clojure.spec :as s])
+  (:require [clojure.spec :as s]
+            [clojure.spec.gen :as gen]
+            [async-connect.netty.spec]
+            [async-connect.spec.generator :as agen])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
            [io.netty.bootstrap ServerBootstrap]
            [io.netty.util ReferenceCountUtil]
@@ -11,46 +14,50 @@
               ChannelOutboundHandlerAdapter
               ChannelPromise]
            [java.net
-              SocketAddress]))
+              SocketAddress
+              InetSocketAddress]))
 
-(defn- throwable? [th] (when th (instance? Throwable th)))
-(defn- channel-handler-context? [o] (when o (instance? ChannelHandlerContext o)))
-(defn- channel-inbound-handler? [h] (when h (instance? ChannelInboundHandler h)))
-(defn- channel-outbound-handler? [h] (when h (instance? ChannelOutboundHandler h)))
-(defn- channel-promise? [p] (when p (instance? ChannelPromise p)))
-(defn- socket-address? [addr] (when addr (instance? SocketAddress addr)))
+(declare make-inbound-handler make-outbound-handler)
 
-(s/def :handler/handler-added         (s/fspec :args (s/cat :ctx channel-handler-context?)))
-(s/def :handler/handler-removed       (s/fspec :args (s/cat :ctx channel-handler-context?)))
 
-(s/def :inbound/channel-active        (s/fspec :args (s/cat :ctx channel-handler-context?)))
-(s/def :inbound/channel-inactive      (s/fspec :args (s/cat :ctx channel-handler-context?)))
-(s/def :inbound/channel-read          (s/fspec :args (s/cat :ctx channel-handler-context? :obj any?)))
-(s/def :inbound/channel-read-complete (s/fspec :args (s/cat :ctx channel-handler-context?)))
-(s/def :inbound/channel-registered    (s/fspec :args (s/cat :ctx channel-handler-context?)))
-(s/def :inbound/channel-unregistered  (s/fspec :args (s/cat :ctx channel-handler-context?)))
+(s/def ::throwable (s/with-gen #(instance? Throwable %) #(agen/create (Exception.))))
+(s/def ::socket-address (s/with-gen #(instance? SocketAddress %) #(agen/create (InetSocketAddress. 21312))))
+(s/def ::channel-inbound-handler (s/with-gen #(instance? ChannelInboundHandler %) #(agen/create (make-inbound-handler {}))))
+(s/def ::channel-outbound-handler (s/with-gen #(instance? ChannelOutboundHandler %) #(agen/create (make-outbound-handler {}))))
+
+(s/def :handler/handler-added         (s/fspec :args (s/cat :ctx :netty/context)))
+(s/def :handler/handler-removed       (s/fspec :args (s/cat :ctx :netty/context)))
+
+(s/def :inbound/channel-active        (s/fspec :args (s/cat :ctx :netty/context)))
+(s/def :inbound/channel-inactive      (s/fspec :args (s/cat :ctx :netty/context)))
+(s/def :inbound/channel-read          (s/fspec :args (s/cat :ctx :netty/context :obj any?)))
+(s/def :inbound/channel-read-complete (s/fspec :args (s/cat :ctx :netty/context)))
+(s/def :inbound/channel-registered    (s/fspec :args (s/cat :ctx :netty/context)))
+(s/def :inbound/channel-unregistered  (s/fspec :args (s/cat :ctx :netty/context)))
 (s/def :inbound/channel-writability-changed
-                                      (s/fspec :args (s/cat :ctx channel-handler-context?)))
-(s/def :inbound/exception-caught      (s/fspec :args (s/cat :ctx channel-handler-context? :throwable throwable?)))
-(s/def :inbound/user-event-triggered  (s/fspec :args (s/cat :ctx channel-handler-context? :event any?)))
+                                      (s/fspec :args (s/cat :ctx :netty/context)))
+(s/def :inbound/exception-caught      (s/fspec :args (s/cat :ctx :netty/context :throwable ::throwable)))
+(s/def :inbound/user-event-triggered  (s/fspec :args (s/cat :ctx :netty/context :event any?)))
 
 (s/def :inbound/handler-map
-  (s/keys
-    :opt [:handler/handler-added
-          :handler/handler-removed
-          :inbound/channel-active
-          :inbound/channel-inactive
-          :inbound/channel-read
-          :inbound/channel-read-complete
-          :inbound/channel-registered
-          :inbound/channel-unregistered
-          :inbound/channel-writability-changed
-          :inbound/exception-caught
-          :inbound/user-event-triggered]))
+  (s/with-gen
+    (s/keys
+      :opt [:handler/handler-added
+            :handler/handler-removed
+            :inbound/channel-active
+            :inbound/channel-inactive
+            :inbound/channel-read
+            :inbound/channel-read-complete
+            :inbound/channel-registered
+            :inbound/channel-unregistered
+            :inbound/channel-writability-changed
+            :inbound/exception-caught
+            :inbound/user-event-triggered])
+    #(gen/one-of {})))
 
 (s/fdef make-inbound-handler
   :args (s/cat :handlers :inbound/handler-map)
-  :ret  channel-inbound-handler?)
+  :ret  ::channel-inbound-handler)
 
 
 (defn make-inbound-handler
@@ -124,41 +131,45 @@
 
 
 
-(s/def :outbound/bind    (s/fspec :args (s/cat :ctx channel-handler-context?
-                                               :local-address socket-address?
-                                               :promise channel-promise?)))
+(s/def :outbound/bind    (s/fspec :args (s/cat :ctx :netty/context
+                                               :local-address ::socket-address
+                                               :promise :netty/channel-promise)))
 
-(s/def :outbound/close   (s/fspec :args (s/cat :ctx channel-handler-context?
-                                               :promise channel-promise?)))
+(s/def :outbound/close   (s/fspec :args (s/cat :ctx :netty/context
+                                               :promise :netty/channel-promise)))
 
-(s/def :outbound/connect (s/fspec :args (s/cat :ctx channel-handler-context?
-                                               :remote-addr socket-address?
-                                               :local-addr socket-address?
-                                               :promise channel-promise?)))
+(s/def :outbound/connect (s/fspec :args (s/cat :ctx :netty/context
+                                               :remote-addr ::socket-address
+                                               :local-addr ::socket-address
+                                               :promise :netty/channel-promise)))
 
-(s/def :outbound/deregister (s/fspec :args (s/cat :ctx channel-handler-context?, :promise channel-promise?)))
-(s/def :outbound/disconnect (s/fspec :args (s/cat :ctx channel-handler-context?, :promise channel-promise?)))
-(s/def :outbound/flush      (s/fspec :args (s/cat :ctx channel-handler-context?)))
-(s/def :outbound/read       (s/fspec :args (s/cat :ctx channel-handler-context?)))
-(s/def :outbound/write      (s/fspec :args (s/cat :ctx channel-handler-context?, :msg any?, :promise channel-promise?)))
+(s/def :outbound/deregister (s/fspec :args (s/cat :ctx :netty/context, :promise :netty/channel-promise)))
+(s/def :outbound/disconnect (s/fspec :args (s/cat :ctx :netty/context, :promise :netty/channel-promise)))
+(s/def :outbound/flush      (s/fspec :args (s/cat :ctx :netty/context)))
+(s/def :outbound/read       (s/fspec :args (s/cat :ctx :netty/context)))
+(s/def :outbound/write      (s/fspec :args (s/cat :ctx :netty/context, :msg any?, :promise :netty/channel-promise)))
 
 (s/def :outbound/handler-map
-  (s/keys
-    :opt [:handler/handler-added
-          :handler/handler-removed
-          :outbound/bind
-          :outbound/close
-          :outbound/connect
-          :outbound/deregister
-          :outbound/disconnect
-          :outbound/flush
-          :outbound/read
-          :outbound/write]))
+  (s/with-gen
+    (s/keys
+      :opt [:handler/handler-added
+            :handler/handler-removed
+            :outbound/bind
+            :outbound/close
+            :outbound/connect
+            :outbound/deregister
+            :outbound/disconnect
+            :outbound/flush
+            :outbound/read
+            :outbound/write])
+    #(gen/one-of
+        {}
+        {:outbound/read (fn [ctx] nil)})))
 
 
 (s/fdef make-outbound-handler
   :args (s/cat :handlers :outbound/handler-map)
-  :ret  channel-inbound-handler?)
+  :ret  ::channel-inbound-handler)
 
 
 (defn make-outbound-handler
