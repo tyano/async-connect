@@ -25,19 +25,19 @@
 (s/def ::channel-inbound-handler (s/with-gen #(instance? ChannelInboundHandler %) #(agen/create (make-inbound-handler {}))))
 (s/def ::channel-outbound-handler (s/with-gen #(instance? ChannelOutboundHandler %) #(agen/create (make-outbound-handler {}))))
 
-(s/def :handler/handler-added         (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :handler/handler-removed       (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :handler/handler-added         (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :handler/handler-removed       (s/fspec :args (s/cat :ctx :netty/context)))
 
-(s/def :inbound/channel-active        (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :inbound/channel-inactive      (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :inbound/channel-read          (s/fspec :args (s/cat :ctx :netty/context :obj any?)))
-(s/def :inbound/channel-read-complete (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :inbound/channel-registered    (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :inbound/channel-unregistered  (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :inbound/channel-writability-changed
+#_(s/def :inbound/channel-active        (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :inbound/channel-inactive      (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :inbound/channel-read          (s/fspec :args (s/cat :ctx :netty/context :obj any?)))
+#_(s/def :inbound/channel-read-complete (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :inbound/channel-registered    (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :inbound/channel-unregistered  (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :inbound/channel-writability-changed
                                       (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :inbound/exception-caught      (s/fspec :args (s/cat :ctx :netty/context :throwable ::throwable)))
-(s/def :inbound/user-event-triggered  (s/fspec :args (s/cat :ctx :netty/context :event any?)))
+#_(s/def :inbound/exception-caught      (s/fspec :args (s/cat :ctx :netty/context :throwable ::throwable)))
+#_(s/def :inbound/user-event-triggered  (s/fspec :args (s/cat :ctx :netty/context :event any?)))
 
 (s/def :inbound/handler-map
   (s/with-gen
@@ -130,24 +130,23 @@
         (proxy-super userEventTriggered ctx evt)))))
 
 
-
-(s/def :outbound/bind    (s/fspec :args (s/cat :ctx :netty/context
+#_(s/def :outbound/bind    (s/fspec :args (s/cat :ctx :netty/context
                                                :local-address ::socket-address
                                                :promise :netty/channel-promise)))
 
-(s/def :outbound/close   (s/fspec :args (s/cat :ctx :netty/context
+#_(s/def :outbound/close   (s/fspec :args (s/cat :ctx :netty/context
                                                :promise :netty/channel-promise)))
 
-(s/def :outbound/connect (s/fspec :args (s/cat :ctx :netty/context
+#_(s/def :outbound/connect (s/fspec :args (s/cat :ctx :netty/context
                                                :remote-addr ::socket-address
                                                :local-addr ::socket-address
                                                :promise :netty/channel-promise)))
 
-(s/def :outbound/deregister (s/fspec :args (s/cat :ctx :netty/context, :promise :netty/channel-promise)))
-(s/def :outbound/disconnect (s/fspec :args (s/cat :ctx :netty/context, :promise :netty/channel-promise)))
-(s/def :outbound/flush      (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :outbound/read       (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def :outbound/write      (s/fspec :args (s/cat :ctx :netty/context, :msg any?, :promise :netty/channel-promise)))
+#_(s/def :outbound/deregister (s/fspec :args (s/cat :ctx :netty/context, :promise :netty/channel-promise)))
+#_(s/def :outbound/disconnect (s/fspec :args (s/cat :ctx :netty/context, :promise :netty/channel-promise)))
+#_(s/def :outbound/flush      (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :outbound/read       (s/fspec :args (s/cat :ctx :netty/context)))
+#_(s/def :outbound/write      (s/fspec :args (s/cat :ctx :netty/context, :msg any?, :promise :netty/channel-promise)))
 
 (s/def :outbound/handler-map
   (s/with-gen
@@ -234,7 +233,6 @@
       (if-let [h (:outbound/write handlers)]
         (h ctx msg promise)
         (proxy-super write ctx msg promise)))))
-
 
 
 

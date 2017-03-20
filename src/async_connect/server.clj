@@ -1,7 +1,6 @@
 (ns async-connect.server
   (:require [clojure.spec :as s]
             [clojure.spec.gen :as gen]
-            [clojure.spec.test :refer [with-instrument-disabled]]
             [clojure.core.async :refer [>!! <!! >! <! go go-loop thread chan close!]]
             [clojure.tools.logging :as log]
             [async-connect.netty :refer [write-if-possible
@@ -30,30 +29,37 @@
            [io.netty.channel.socket
               SocketChannel]
            [io.netty.channel.socket.nio
-              NioServerSocketChannel]))
+              NioServerSocketChannel]
+           [io.netty.util
+              ReferenceCountUtil]))
 
-(s/def :server.config/port pos-int?)
+(s/def :server.config/address (s/nilable string?))
+(s/def :server.config/port (s/or :zero zero? :pos pos-int?))
 
-(s/def :server.config/channel-initializer
+#_(s/def :server.config/channel-initializer
   (s/fspec :args (s/cat :netty-channel :netty/channel
                         :config ::config-no-initializer)
            :ret :netty/channel))
 
-(s/def :server.config/bootstrap-initializer
+#_(s/def :server.config/bootstrap-initializer
   (s/fspec :args (s/cat :bootstrap :netty/server-bootstrap)
            :ret  :netty/server-bootstrap))
 
-(s/def :server.config/read-channel-builder
+#_(s/def :server.config/read-channel-builder
   (s/fspec :args empty? :ret ::spec/read-channel))
 
-(s/def :server.config/write-channel-builder
+#_(s/def :server.config/write-channel-builder
   (s/fspec :args empty? :ret ::spec/write-channel))
 
-(s/def :server.config/server-handler
+#_(s/def :server.config/server-handler
   (s/fspec :args (s/cat :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
            :ret  any?))
 
-(s/def :server.config/close-handler
+#_(s/def :server.config/server-handler-factory
+  (s/fspec :args (s/cat :address string? :port int?)
+           :ret  :server.config/server-handler))
+
+#_(s/def :server.config/close-handler
   (s/fspec :args empty? :ret any?))
 
 (s/def :server.config/boss-group :netty/event-loop-group)

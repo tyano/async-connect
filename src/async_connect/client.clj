@@ -36,12 +36,12 @@
               NioSocketChannel]))
 
 
-(s/def :client.config/channel-initializer
+#_(s/def :client.config/channel-initializer
   (s/fspec :args (s/cat :netty-channel :netty/socket-channel
                         :config ::config)
            :ret :netty/socket-channel))
 
-(s/def :client.config/bootstrap-initializer
+#_(s/def :client.config/bootstrap-initializer
   (s/fspec :args (s/cat :bootstrap :netty/bootstrap)
            :ret  :netty/bootstrap))
 
