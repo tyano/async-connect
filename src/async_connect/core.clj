@@ -3,7 +3,6 @@
             [clojure.spec :as s]
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [chan go-loop <! >!]]
-            [clojure.spec.test :as stest]
             [async-connect.spec :as spec]
             [async-connect.netty :refer [bytebuf->string string->bytebuf]])
   (:import [io.netty.buffer ByteBuf Unpooled]
@@ -12,12 +11,6 @@
               ChannelInboundHandlerAdapter
               ChannelHandler])
   (:gen-class))
-
-(s/def ::run-server-spec
-  (s/fspec
-    :args (s/cat :read-channel ::spec/read-channel, :write-channel ::spec/write-channel, :config any?)
-    :ret  any?))
-
 
 (defn- server-handler
   [read-ch write-ch]
@@ -37,9 +30,6 @@
                   :server.config/write-channel-builder #(chan 1 string->bytebuf)
                   :server.config/server-handler server-handler}]
     (s/assert ::server/config config)
-
-    (stest/instrument
-      {:spec {'async-connect.server/run-server ::run-server-spec}})
 
     (-> (run-server config)
       (close-wait #(println "SERVER STOPS.")))))

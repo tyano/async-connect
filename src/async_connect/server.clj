@@ -11,13 +11,18 @@
             [async-connect.netty.handler :refer [make-inbound-handler]]
             [async-connect.spec :as spec]
             [async-connect.box :refer [boxed] :as box])
-  (:import [io.netty.bootstrap ServerBootstrap]
+  (:import [java.net
+              InetAddress
+              Inet4Address
+              Inet6Address
+              NetworkInterface]
+           [io.netty.bootstrap ServerBootstrap]
            [io.netty.buffer
               PooledByteBufAllocator]
-           [io.netty.util ReferenceCountUtil]
            [io.netty.channel
               Channel
               ChannelFuture
+              ChannelFutureListener
               ChannelInitializer
               ChannelOption
               EventLoopGroup
@@ -68,7 +73,7 @@
 (s/def ::config-no-initializer
   (s/with-gen
     (s/keys
-      :req [:server.config/server-handler]
+      :req [:server.config/server-handler-factory]
       :opt [:server.config/read-channel-builder
             :server.config/write-channel-builder
             :server.config/port
@@ -76,7 +81,9 @@
             :server.config/boss-group
             :server.config/worker-group])
     #(gen/return
-        {:server.config/server-handler (fn [read-ch write-ch] nil)})))
+        {:server.config/server-handler-factory
+          (fn [host port]
+            (fn [read-ch write-ch] nil))})))
 
 (s/def ::config
   (s/with-gen
@@ -101,13 +108,13 @@
    :inbound/exception-caught
     (fn [ctx, th] (default-exception-caught ctx th read-ch))})
 
-(defn append-server-handler
+(defn append-preprocess-handler
   [^SocketChannel netty-ch read-ch write-ch]
   (.. netty-ch
     (pipeline)
     (addLast
         "async-connect-server"
-        ^ChannelHandler (with-instrument-disabled (make-inbound-handler (make-default-handler-map read-ch write-ch))))))
+        ^ChannelHandler (make-inbound-handler (make-default-handler-map read-ch write-ch)))))
 
 (defn- init-bootstrap
   [bootstrap initializer]
@@ -116,14 +123,36 @@
     bootstrap))
 
 (defprotocol IServer
-  (close-wait [this close-handler]))
+  (close-wait [this close-handler])
+  (port [this]))
+
+
+(defn sort-addresses
+  [addresses]
+  (sort-by #(cond (instance? Inet4Address %) 0
+                  (instance? Inet6Address %) 1
+                  :else 2)
+    addresses))
+
+(defn find-one-public-address
+  []
+  (or
+    (->> (enumeration-seq (NetworkInterface/getNetworkInterfaces))
+         (filter #(not (.isLoopback %)))
+         (mapcat #(enumeration-seq (.getInetAddresses %)))
+         (sort-addresses)
+         (first))
+    (->> (enumeration-seq (NetworkInterface/getNetworkInterfaces))
+         (filter #(.isLoopback %))
+         (first))))
 
 (s/fdef run-server
   :args (s/cat :config ::config)
   :ret  #(instance? IServer %))
 
 (defn run-server
-  [{:keys [:server.config/server-handler
+  [{:keys [:server.config/server-handler-factory
+           :server.config/address
            :server.config/port
            :server.config/channel-initializer
            :server.config/bootstrap-initializer
@@ -131,25 +160,28 @@
            :server.config/write-channel-builder
            :server.config/boss-group
            :server.config/worker-group]
-      :or {port 8080
+      :or {port 0
            read-channel-builder #(chan)
            write-channel-builder #(chan)
            boss-group (NioEventLoopGroup.)
            worker-group (NioEventLoopGroup.)}
       :as config}]
 
-  {:pre [config (:server.config/server-handler config)]}
+  {:pre [config (:server.config/server-handler-factory config)]}
 
-  (let [bootstrap ^ServerBootstrap (.. ^ServerBootstrap (ServerBootstrap.)
+  (let [server-address (when address (InetAddress/getByName address))
+        handler-promise (promise)
+        bootstrap ^ServerBootstrap (.. ^ServerBootstrap (ServerBootstrap.)
                                           (childHandler
                                             (proxy [ChannelInitializer] []
                                               (initChannel
                                                 [^Channel netty-ch]
                                                 (when channel-initializer
                                                   (channel-initializer netty-ch config))
-                                                (let [read-ch  (read-channel-builder)
+                                                (let [server-handler @handler-promise
+                                                      read-ch  (read-channel-builder)
                                                       write-ch (write-channel-builder)]
-                                                  (append-server-handler netty-ch read-ch write-ch)
+                                                  (append-preprocess-handler netty-ch read-ch write-ch)
                                                   (server-handler read-ch write-ch)))))
                                           (childOption ChannelOption/SO_KEEPALIVE true)
                                           (group
@@ -163,18 +195,44 @@
 
     (init-bootstrap bootstrap bootstrap-initializer)
 
-    (let [f ^ChannelFuture (.. bootstrap (bind (int port)) (sync))]
+    (let [f ^ChannelFuture (.. bootstrap (bind ^InetAddress server-address (int port)) (sync))
+          server-promise (promise)]
+
+      (.addListener
+        f
+        (reify
+          ChannelFutureListener
+          (operationComplete
+            [this fut]
+            (when (.cause fut)
+              (log/error (.cause fut) "Can not bind.")
+              (throw (.cause fut)))
+
+            (let [{:keys [server-host server-port]}
+                    (let [local-address (-> fut (.channel) (.localAddress))]
+                      {:server-host (if server-address
+                                      (.getHostAddress server-address)
+                                      (.getHostAddress (find-one-public-address)))
+                       :server-port (.getPort local-address)})]
+
+              (deliver handler-promise (server-handler-factory server-host server-port))
+              (log/info "Listening address : " server-host ", port: " server-port)
+              (deliver server-promise {:host server-host, :port server-port})))))
+
       (reify
         IServer
         (close-wait [_ close-handler]
           (try
-            (.. f
-              (channel)
-              (closeFuture)
-              (sync))
+            (-> f
+              (.channel)
+              (.closeFuture)
+              (.sync))
             (finally
               (when close-handler (close-handler))
               (.shutdownGracefully ^EventLoopGroup worker-group)
-              (.shutdownGracefully ^EventLoopGroup boss-group))))))))
+              (.shutdownGracefully ^EventLoopGroup boss-group))))
+
+        (port [this] (:port @server-promise))))))
+
 
 
