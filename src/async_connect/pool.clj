@@ -64,7 +64,7 @@
           ;; it might not be in pool because ALL_IDLE event might occurred when the connection is out of pool.
           ;; But always close it if force-close? is true.
           (when (or force-close? must-remove?)
-            (client/close conn true)))))))
+            (client/close-connection conn)))))))
 
 
 (defn- make-idle-event-handler
