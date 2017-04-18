@@ -119,28 +119,28 @@
   ([{:keys [:client.config/bootstrap-initializer
             :client.config/channel-initializer]
       :as config}]
-    (let [worker-group ^EventLoopGroup (NioEventLoopGroup.)]
-      (let [bootstrap (.. (Bootstrap.)
-                        (group worker-group)
-                        (channel NioSocketChannel)
-                        (option ChannelOption/WRITE_BUFFER_HIGH_WATER_MARK (int (* 32 1024)))
-                        (option ChannelOption/WRITE_BUFFER_LOW_WATER_MARK (int (* 8 1024)))
-                        (option ChannelOption/SO_SNDBUF (int (* 1024 1024)))
-                        (option ChannelOption/SO_RCVBUF (int (* 1024 1024)))
-                        (option ChannelOption/TCP_NODELAY true)
-                        (option ChannelOption/SO_KEEPALIVE true)
-                        (option ChannelOption/SO_REUSEADDR true)
-                        (option ChannelOption/ALLOCATOR PooledByteBufAllocator/DEFAULT)
-                        (handler
-                          (proxy [ChannelInitializer] []
-                            (initChannel
-                              [^SocketChannel ch]
-                              (when channel-initializer
-                                (channel-initializer ch config))
-                              nil))))]
-        (init-bootstrap bootstrap bootstrap-initializer))))
+   (let [worker-group ^EventLoopGroup (NioEventLoopGroup.)]
+     (let [bootstrap (.. (Bootstrap.)
+                       (group worker-group)
+                       (channel NioSocketChannel)
+                       (option ChannelOption/WRITE_BUFFER_HIGH_WATER_MARK (int (* 32 1024)))
+                       (option ChannelOption/WRITE_BUFFER_LOW_WATER_MARK (int (* 8 1024)))
+                       (option ChannelOption/SO_SNDBUF (int (* 1024 1024)))
+                       (option ChannelOption/SO_RCVBUF (int (* 1024 1024)))
+                       (option ChannelOption/TCP_NODELAY true)
+                       (option ChannelOption/SO_KEEPALIVE true)
+                       (option ChannelOption/SO_REUSEADDR true)
+                       (option ChannelOption/ALLOCATOR PooledByteBufAllocator/DEFAULT)
+                       (handler
+                         (proxy [ChannelInitializer] []
+                           (initChannel
+                             [^SocketChannel ch]
+                             (when channel-initializer
+                               (channel-initializer ch config))
+                             nil))))]
+       (init-bootstrap bootstrap bootstrap-initializer))))
   ([]
-    (make-bootstrap {})))
+   (make-bootstrap {})))
 
 
 (s/def :client/channel  (s/nilable :netty/channel))
@@ -215,9 +215,9 @@
 
 (defn connection-factory
   ([bootstrap]
-    (->NettyConnectionFactory bootstrap))
+   (->NettyConnectionFactory bootstrap))
   ([]
-    (connection-factory (make-bootstrap {}))))
+   (connection-factory (make-bootstrap {}))))
 
 (s/fdef connect
   :args (s/cat :factory   ::connection-factory
@@ -229,12 +229,12 @@
 
 (defn connect
   ([factory host port read-ch write-ch]
-    (log/trace "async: connect:" factory)
-    (create-connection factory host port read-ch write-ch))
+   (log/trace "async: connect:" factory)
+   (create-connection factory host port read-ch write-ch))
 
   ([factory host port]
-    (log/trace "async: connect:" factory)
-    (create-connection factory host port nil nil)))
+   (log/trace "async: connect:" factory)
+   (create-connection factory host port nil nil)))
 
 
 (s/fdef closed?

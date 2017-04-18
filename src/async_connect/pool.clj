@@ -110,10 +110,10 @@
           (do
             (log/trace "no pooled connection is found. create a new one.")
             (let [{:keys [:client/channel] :as new-conn}
-                      (merge (->PooledConnection pooled-connections)
-                            (client/connect factory host port read-ch write-ch)
-                            {:pool/host host
-                             :pool/port port})]
+                  (merge (->PooledConnection pooled-connections)
+                        (client/connect factory host port read-ch write-ch)
+                        {:pool/host host
+                         :pool/port port})]
 
               ;; add an IdleStateHandler to a pipeline of this netty channel.
               (let [pipeline (.pipeline channel)]
@@ -148,11 +148,11 @@
 
 (defn pooled-connection-factory
   ([factory pool idle-timeout-sec]
-    (->PooledNettyConnectionFactory factory pool idle-timeout-sec))
+   (->PooledNettyConnectionFactory factory pool idle-timeout-sec))
   ([factory idle-timeout-sec]
-    (pooled-connection-factory factory (create-default-pool) idle-timeout-sec))
+   (pooled-connection-factory factory (create-default-pool) idle-timeout-sec))
   ([idle-timeout-sec]
-    (pooled-connection-factory (client/connection-factory) idle-timeout-sec)))
+   (pooled-connection-factory (client/connection-factory) idle-timeout-sec)))
 
 (defn sample-connect
   [factory]

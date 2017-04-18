@@ -48,7 +48,7 @@
                       close? false
                       promise ^ChannelPromise (.voidPromise ctx)}
                  :as data}
-                (<! write-ch)]
+              (<! write-ch)]
       (do
         (s/assert ::writedata data)
         (thread
