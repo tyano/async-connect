@@ -46,27 +46,36 @@
       (if-let [conns (get @pooled-connections pool-key)]
         (some #(= % torn-conn) conns)))))
 
+(defn- close-physical-connection
+  [{:keys [:pool/host :pool/port] :as conn} force-close?]
+  (when conn
+    (let [pool-key (make-pool-key host port)
+          pooled-connections (:pooled-connections conn)]
+      (locking pooled-connections
+        (let [torn-conn   (dissoc conn :pooled-connections)
+              must-remove? (pooled? pooled-connections pool-key torn-conn)]
+
+          ;; remove this connection from connection-pool.
+          (when must-remove?
+            (log/trace "remove a connection:" (pr-str torn-conn))
+            (remove-from-pool pooled-connections torn-conn))
+
+          ;; and close it only if the connection is in connection-pool.
+          ;; it might not be in pool because ALL_IDLE event might occurred when the connection is out of pool.
+          ;; But always close it if force-close? is true.
+          (when (or force-close? must-remove?)
+            (client/close conn true)))))))
+
+
 (defn- make-idle-event-handler
-  [{:keys [:pool/host :pool/port] :as conn}]
+  [conn]
   (proxy [ChannelDuplexHandler] []
     (userEventTriggered
       [^ChannelHandlerContext ctx, ^Object evt]
       (when (and (instance? IdleStateEvent evt)
                  (= (.state ^IdleStateEvent evt) IdleState/ALL_IDLE))
-
-        (let [pool-key (make-pool-key host port)
-              pooled-connections (:pooled-connections conn)]
-          (locking pooled-connections
-            (let [torn-conn (dissoc conn :pooled-connections)
-                  must-close? (pooled? pooled-connections pool-key torn-conn)]
-              (when must-close?
-                ;; remove this connection from connection-pool.
-                (log/trace "remove a connection:" (pr-str torn-conn))
-                (remove-from-pool pooled-connections torn-conn)
-                ;; and close it only if the connection is in connection-pool.
-                ;; it might not be in pool because ALL_IDLE event might occurred when the connection is out of pool.
-                (log/debug "connection idle timeout. closed : " (pr-str (dissoc conn :pooled-connections)))
-                (client/close conn true)))))))))
+        (log/debug "connection idle timeout. closed : " (pr-str (dissoc conn :pooled-connections)))
+        (close-physical-connection conn false)))))
 
 (defrecord PooledConnection
   [pooled-connections])
@@ -75,18 +84,18 @@
   IConnection
   (close
     ([{:keys [:pool/host :pool/port] :as conn} force?]
-      (if force?
-        (client/close-connection conn)
-        (let [pool-key (make-pool-key host port)
-              pooled-connections (:pooled-connections conn)]
-          (locking pooled-connections
-            (let [torn-conn (dissoc conn :pooled-connections)]
-              (log/trace "returning a connection:" torn-conn)
-              (vswap! pooled-connections update pool-key #(if % (vec (cons torn-conn %)) [torn-conn]))))
-          nil)))
+     (if force?
+       (close-physical-connection conn true)
+       (let [pool-key (make-pool-key host port)
+             pooled-connections (:pooled-connections conn)]
+         (locking pooled-connections
+           (let [torn-conn (dissoc conn :pooled-connections)]
+             (log/trace "returning a connection:" torn-conn)
+             (vswap! pooled-connections update pool-key #(if % (vec (cons torn-conn %)) [torn-conn]))))
+         nil)))
 
     ([this]
-      (client/close this false))))
+     (client/close this false))))
 
 (defn- connect*
   "Connect to a `port` of a `host` using `factory`, and return a IConnection object, but before making
