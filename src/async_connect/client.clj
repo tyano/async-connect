@@ -37,13 +37,13 @@
 
 
 #_(s/def :client.config/channel-initializer
-  (s/fspec :args (s/cat :netty-channel :netty/socket-channel
-                        :config ::config)
-           :ret :netty/socket-channel))
+   (s/fspec :args (s/cat :netty-channel :netty/socket-channel
+                         :config ::config)
+            :ret :netty/socket-channel))
 
 #_(s/def :client.config/bootstrap-initializer
-  (s/fspec :args (s/cat :bootstrap :netty/bootstrap)
-           :ret  :netty/bootstrap))
+   (s/fspec :args (s/cat :bootstrap :netty/bootstrap)
+            :ret  :netty/bootstrap))
 
 (s/def ::config
   (s/with-gen
