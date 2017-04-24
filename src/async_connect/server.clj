@@ -195,8 +195,8 @@
 
     (init-bootstrap bootstrap bootstrap-initializer)
 
-    (let [f ^ChannelFuture (.. bootstrap (bind ^InetAddress server-address (int port)) (sync))
-          server-promise (promise)]
+    (let [f ^ChannelFuture (.. bootstrap (bind ^InetAddress server-address (int port)))
+          server-promise   (promise)]
 
       (.addListener
         f

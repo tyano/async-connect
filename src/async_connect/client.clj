@@ -166,8 +166,13 @@
 (defn close-connection
   [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
   (when channel
-    (.. ^SocketChannel channel (close) (sync))
-    (log/debug "connection closed: " channel))
+    (.. ^SocketChannel channel
+        (close)
+        (addListener
+          (reify ChannelFutureListener
+            (operationComplete
+              [this f]
+              (log/debug "connection closed: " channel))))))
 
   (when read-ch (close! read-ch))
   (when write-ch (close! write-ch))

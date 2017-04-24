@@ -2,7 +2,7 @@
   (:require [async-connect.client :refer [IConnection IConnectionFactory] :as client]
             [clojure.spec :as s]
             [clojure.tools.logging :as log]
-            [clojure.core.async :refer [thread chan <! >! go-loop]]
+            [clojure.core.async :refer [chan <! >! go-loop]]
             [async-connect.netty :refer [bytebuf->string
                                          string->bytebuf]])
   (:import [io.netty.channel.socket
@@ -61,7 +61,8 @@
             (remove-from-pool pooled-connections torn-conn))
 
           ;; and close it only if the connection is in connection-pool.
-          ;; it might not be in pool because ALL_IDLE event might occurred when the connection is out of pool.
+          ;; it might not be in pool because ALL_IDLE event might occurred when the connection is out of pool
+          ;; ex) when waiting a long-running request.
           ;; But always close it if force-close? is true.
           (when (or force-close? must-remove?)
             (client/close-connection conn)))))))
@@ -131,14 +132,12 @@
                   (addFirst "idleStateHandler" (make-idle-state-handler idle-timeout-sec))))
 
               ;; remove this new-conn from our connection-pool when this channel is closed.
-              (thread
-                (.. ^SocketChannel channel
-                  (closeFuture)
-                  (addListener
-                    (reify ChannelFutureListener
-                      (operationComplete [this f]
-                        (remove-from-pool pooled-connections new-conn))))
-                  (sync)))
+              (.. ^SocketChannel channel
+                (closeFuture)
+                (addListener
+                  (reify ChannelFutureListener
+                    (operationComplete [this f]
+                      (remove-from-pool pooled-connections new-conn)))))
 
               new-conn)))))))
 
