@@ -1,6 +1,6 @@
 (ns async-connect.core
   (:require [async-connect.server :refer [run-server close-wait] :as server]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [chan go-loop <! >!]]
             [async-connect.spec :as spec]

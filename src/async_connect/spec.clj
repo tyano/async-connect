@@ -1,5 +1,5 @@
 (ns async-connect.spec
-  (:require [clojure.spec :as s]
+  (:require [clojure.spec.alpha :as s]
             [async-connect.spec.generator :as gen]
             [clojure.core.async :refer [chan]])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]

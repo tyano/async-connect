@@ -1,6 +1,6 @@
 (ns async-connect.netty
-  (:require [clojure.spec :as s]
-            [clojure.spec.gen :as gen]
+  (:require [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]
             [async-connect.spec.generator :as agen]
             [async-connect.netty.spec]
             [clojure.tools.logging :as log]

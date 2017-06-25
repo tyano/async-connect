@@ -1,6 +1,6 @@
 (ns async-connect.pool
   (:require [async-connect.client :refer [IConnection IConnectionFactory] :as client]
-            [clojure.spec :as s]
+            [clojure.spec.alpha :as s]
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [chan <! >! go-loop]]
             [async-connect.netty :refer [bytebuf->string

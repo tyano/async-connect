@@ -1,6 +1,6 @@
 (ns async-connect.server
-  (:require [clojure.spec :as s]
-            [clojure.spec.gen :as gen]
+  (:require [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]
             [clojure.core.async :refer [>!! <!! >! <! go go-loop thread chan close!]]
             [clojure.tools.logging :as log]
             [async-connect.netty :refer [write-if-possible

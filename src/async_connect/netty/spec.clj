@@ -1,6 +1,6 @@
 (ns async-connect.netty.spec
-  (:require [clojure.spec :as s]
-            [clojure.spec.gen :as gen]
+  (:require [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]
             [async-connect.spec.generator :as agen])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
            [java.net

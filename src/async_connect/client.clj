@@ -1,7 +1,7 @@
 (ns async-connect.client
-  (:require [clojure.spec :as s]
-            [clojure.spec.gen :as gen]
-            [clojure.spec.test :refer [with-instrument-disabled]]
+  (:require [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]
+            [clojure.spec.test.alpha :refer [with-instrument-disabled]]
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [>!! <!! >! <! thread close! chan go go-loop]]
             [async-connect.spec :as spec]
