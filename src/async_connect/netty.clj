@@ -69,15 +69,17 @@
 (defn default-channel-read
   [^ChannelHandlerContext ctx, ^Object msg, read-ch]
   (log/trace "channel read: " ctx)
-  (when-not (>!! read-ch (boxed msg))
-    ;; the port is already closed. close a current context.
-    (.close ctx)))
+  (go
+    (when-not (>! read-ch (boxed msg))
+      ;; the port is already closed. close a current context.
+      (.close ctx))))
 
 (defn default-exception-caught
   [^ChannelHandlerContext ctx, ^Throwable th, read-ch]
   (log/trace "exception-caught: " ctx)
-  (go (>! read-ch (boxed th)))
-  (.close ctx))
+  (go
+    (>! read-ch (boxed th))
+    (.close ctx)))
 
 (defn bytebuf->bytes
   [data]
