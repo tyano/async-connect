@@ -56,7 +56,9 @@
           (when close?
             (.close ctx)))
         (recur))
-      (log/debug "A writer-thread stops: " ctx))))
+      (do
+        (log/debug "A writer-thread stops: " ctx)
+        (.close ctx)))))
 
 (defn default-channel-inactive
   [^ChannelHandlerContext ctx, read-ch, write-ch]
@@ -67,7 +69,9 @@
 (defn default-channel-read
   [^ChannelHandlerContext ctx, ^Object msg, read-ch]
   (log/trace "channel read: " ctx)
-  (>!! read-ch (boxed msg)))
+  (when-not (>!! read-ch (boxed msg))
+    ;; the port is already closed. close a current context.
+    (.close ctx)))
 
 (defn default-exception-caught
   [^ChannelHandlerContext ctx, ^Throwable th, read-ch]
