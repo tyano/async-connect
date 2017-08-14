@@ -8,9 +8,12 @@
   (:import [io.netty.channel.socket
               SocketChannel]
            [io.netty.channel
+              Channel
               ChannelFutureListener
               ChannelHandlerContext
-              ChannelDuplexHandler]
+              ChannelDuplexHandler
+              ChannelPipeline
+              ChannelHandler]
            [io.netty.bootstrap
               Bootstrap]
            [io.netty.handler.timeout
@@ -126,10 +129,10 @@
                          :pool/port port})]
 
               ;; add an IdleStateHandler to a pipeline of this netty channel.
-              (let [pipeline (.pipeline channel)]
+              (let [pipeline ^ChannelPipeline (.pipeline ^SocketChannel channel)]
                 (.. pipeline
-                  (addFirst "idleEventHandler" (make-idle-event-handler new-conn))
-                  (addFirst "idleStateHandler" (make-idle-state-handler idle-timeout-sec))))
+                  (addFirst "idleEventHandler" ^ChannelHandler (make-idle-event-handler new-conn))
+                  (addFirst "idleStateHandler" ^ChannelHandler (make-idle-state-handler idle-timeout-sec))))
 
               ;; remove this new-conn from our connection-pool when this channel is closed.
               (.. ^SocketChannel channel
