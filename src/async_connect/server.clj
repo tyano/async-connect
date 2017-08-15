@@ -9,6 +9,7 @@
                                          default-channel-read
                                          default-exception-caught]]
             [async-connect.netty.handler :refer [make-inbound-handler]]
+            [async-connect.netty.spec]
             [async-connect.spec :as spec]
             [async-connect.box :refer [boxed] :as box])
   (:import [java.net
@@ -57,7 +58,7 @@
   (s/fspec :args empty? :ret ::spec/write-channel))
 
 #_(s/def :server.config/server-handler
-  (s/fspec :args (s/cat :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
+  (s/fspec :args (s/cat :context :netty/context, :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
            :ret  any?))
 
 #_(s/def :server.config/server-handler-factory
@@ -109,12 +110,12 @@
     (fn [ctx, th] (default-exception-caught ctx th read-ch))})
 
 (defn append-preprocess-handler
-  [^SocketChannel netty-ch read-ch write-ch]
+  [^SocketChannel netty-ch context read-ch write-ch]
   (.. netty-ch
     (pipeline)
     (addLast
         "async-connect-server"
-        ^ChannelHandler (make-inbound-handler (make-default-handler-map read-ch write-ch)))))
+        ^ChannelHandler (make-inbound-handler context (make-default-handler-map read-ch write-ch)))))
 
 (defn- init-bootstrap
   [bootstrap initializer]
@@ -179,10 +180,11 @@
                                                 (when channel-initializer
                                                   (channel-initializer netty-ch config))
                                                 (let [server-handler @handler-promise
+                                                      context  (atom nil)
                                                       read-ch  (read-channel-builder)
                                                       write-ch (write-channel-builder)]
-                                                  (append-preprocess-handler netty-ch read-ch write-ch)
-                                                  (server-handler read-ch write-ch)))))
+                                                  (append-preprocess-handler netty-ch context read-ch write-ch)
+                                                  (server-handler context read-ch write-ch)))))
                                           (childOption ChannelOption/SO_KEEPALIVE true)
                                           (group
                                             ^EventLoopGroup boss-group

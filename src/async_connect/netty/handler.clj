@@ -61,7 +61,8 @@
 
 
 (defn make-inbound-handler
-  [handlers]
+  [context handlers]
+  ;; `context` must be an atom.
   (proxy [ChannelInboundHandlerAdapter] []
     (handlerAdded
       [^ChannelHandlerContext ctx]
@@ -101,6 +102,7 @@
 
     (channelRegistered
       [^ChannelHandlerContext ctx]
+      (reset! context ctx)
       (if-let [h (:inbound/channel-registered handlers)]
         (h ctx)
         (proxy-super channelRegistered ctx)))

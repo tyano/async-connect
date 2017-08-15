@@ -93,7 +93,7 @@
 
 
 (defn add-client-handler
-  [^SocketChannel netty-channel read-ch write-ch]
+  [^SocketChannel netty-channel context read-ch write-ch]
   (when netty-channel
     (log/trace "add-client-handler: " netty-channel)
     (let [handler-name "async-connect-client"
@@ -102,7 +102,7 @@
         (.remove pipeline handler-name))
       (.addLast pipeline
         handler-name
-        ^ChannelHandler (with-instrument-disabled (make-inbound-handler (make-client-inbound-handler-map read-ch write-ch)))))))
+        ^ChannelHandler (with-instrument-disabled (make-inbound-handler context (make-client-inbound-handler-map read-ch write-ch)))))))
 
 
 (defn- init-bootstrap
@@ -144,11 +144,13 @@
 
 
 (s/def :client/channel  (s/nilable :netty/channel))
+(s/def :client/context  ::spec/atom)
 (s/def :client/read-ch  ::spec/read-channel)
 (s/def :client/write-ch ::spec/write-channel)
 (s/def :client/connection
   (s/keys
     :req [:client/channel
+          :client/context
           :client/read-ch
           :client/write-ch]))
 
@@ -202,12 +204,14 @@
   [^Bootstrap bootstrap ^String host port read-ch write-ch]
   (let [read-chan  (or read-ch (chan))
         write-chan (or write-ch (chan))
+        context (atom nil)
         channel (.. bootstrap (connect host (int port)) (sync) (channel))]
 
     (log/debug "connected:" (str "host: " host ", port: " port))
-    (add-client-handler channel read-chan write-chan)
+    (add-client-handler channel context read-chan write-chan)
 
     (map->NettyConnection {:client/channel  channel
+                           :client/context  context
                            :client/read-ch  read-chan
                            :client/write-ch write-chan})))
 
