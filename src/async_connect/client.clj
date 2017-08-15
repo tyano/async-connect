@@ -12,7 +12,7 @@
                                          default-channel-inactive
                                          default-channel-read
                                          default-exception-caught]]
-            [async-connect.netty.handler :refer [make-inbound-handler]]
+            [async-connect.netty.handler :refer [make-inbound-handler make-outbound-handler]]
             [async-connect.box :refer [boxed]])
   (:import [io.netty.bootstrap
               Bootstrap]
@@ -96,13 +96,20 @@
   [^SocketChannel netty-channel context read-ch write-ch]
   (when netty-channel
     (log/trace "add-client-handler: " netty-channel)
-    (let [handler-name "async-connect-client"
+    (let [inbound-handler-name "async-connect-client-inbound"
+          outbound-handler-name "async-connect-client-outbound"
           pipeline     ^ChannelPipeline (.pipeline netty-channel)]
-      (when (.context pipeline handler-name)
-        (.remove pipeline handler-name))
+      (when (.context pipeline inbound-handler-name)
+        (.remove pipeline inbound-handler-name))
+      (when (.context pipeline outbound-handler-name)
+        (.remove pipeline outbound-handler-name))
+
       (.addLast pipeline
-        handler-name
-        ^ChannelHandler (with-instrument-disabled (make-inbound-handler context (make-client-inbound-handler-map read-ch write-ch)))))))
+        inbound-handler-name
+        ^ChannelHandler (make-inbound-handler context (make-client-inbound-handler-map read-ch write-ch)))
+      (.addLast pipeline
+        outbound-handler-name
+        ^ChannelHandler (make-outbound-handler context {})))))
 
 
 (defn- init-bootstrap
