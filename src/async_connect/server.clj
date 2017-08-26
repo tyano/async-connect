@@ -127,26 +127,6 @@
   (close-wait [this close-handler])
   (port [this]))
 
-
-(defn sort-addresses
-  [addresses]
-  (sort-by #(cond (instance? Inet4Address %) 0
-                  (instance? Inet6Address %) 1
-                  :else 2)
-    addresses))
-
-(defn find-one-public-address
-  []
-  (or
-    (->> (enumeration-seq (NetworkInterface/getNetworkInterfaces))
-         (filter #(not (.isLoopback %)))
-         (mapcat #(enumeration-seq (.getInetAddresses %)))
-         (sort-addresses)
-         (first))
-    (->> (enumeration-seq (NetworkInterface/getNetworkInterfaces))
-         (filter #(.isLoopback %))
-         (first))))
-
 (s/fdef run-server
   :args (s/cat :config ::config)
   :ret  #(instance? IServer %))
@@ -212,9 +192,7 @@
 
             (let [{:keys [server-host server-port]}
                     (let [local-address (-> fut (.channel) (.localAddress))]
-                      {:server-host (if server-address
-                                      (.getHostAddress server-address)
-                                      (.getHostAddress (find-one-public-address)))
+                      {:server-host (when server-address (.getHostAddress server-address))
                        :server-port (.getPort local-address)})]
 
               (deliver handler-promise (server-handler-factory server-host server-port))
