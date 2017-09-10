@@ -4,7 +4,8 @@
 (defprotocol IWrapper
   (update [this f])
   (reset [this v])
-  (error? [this]))
+  (error? [this])
+  (exception [this]))
 
 (declare boxed)
 
@@ -33,7 +34,12 @@
 
   (error?
     [this]
-    (instance? Throwable value)))
+    (instance? Throwable value))
+
+  (exception
+    [this]
+    (when (instance? Throwable value)
+      value)))
 
 (defn boxed
   [value]
