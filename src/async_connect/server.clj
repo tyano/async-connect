@@ -42,30 +42,30 @@
 (s/def :server.config/address (s/nilable string?))
 (s/def :server.config/port (s/or :zero zero? :pos pos-int?))
 
-#_(s/def :server.config/channel-initializer
+(s/def :server.config/channel-initializer
   (s/fspec :args (s/cat :netty-channel :netty/channel
                         :config ::config-no-initializer)
            :ret :netty/channel))
 
-#_(s/def :server.config/bootstrap-initializer
+(s/def :server.config/bootstrap-initializer
   (s/fspec :args (s/cat :bootstrap :netty/server-bootstrap)
            :ret  :netty/server-bootstrap))
 
-#_(s/def :server.config/read-channel-builder
-  (s/fspec :args empty? :ret ::spec/read-channel))
+(s/def :server.config/read-channel-builder
+  (s/fspec :args (s/cat :channel :netty/channel) :ret ::spec/read-channel))
 
-#_(s/def :server.config/write-channel-builder
-  (s/fspec :args empty? :ret ::spec/write-channel))
+(s/def :server.config/write-channel-builder
+  (s/fspec :args (s/cat :channel :netty/channel) :ret ::spec/write-channel))
 
-#_(s/def :server.config/server-handler
-  (s/fspec :args (s/cat :context :netty/context, :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
+(s/def :server.config/server-handler
+  (s/fspec :args (s/cat :context :spec/atom, :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
            :ret  any?))
 
-#_(s/def :server.config/server-handler-factory
+(s/def :server.config/server-handler-factory
   (s/fspec :args (s/cat :address string? :port int?)
            :ret  :server.config/server-handler))
 
-#_(s/def :server.config/close-handler
+(s/def :server.config/close-handler
   (s/fspec :args empty? :ret any?))
 
 (s/def :server.config/boss-group :netty/event-loop-group)
@@ -84,7 +84,7 @@
     #(gen/return
         {:server.config/server-handler-factory
           (fn [host port]
-            (fn [read-ch write-ch] nil))})))
+            (fn [ctx read-ch write-ch] nil))})))
 
 (s/def ::config
   (s/with-gen
@@ -92,7 +92,7 @@
       (s/keys :opt [:server.config/channel-initializer])
       ::config-no-initializer)
     #(gen/return
-        {:server.config/server-handler (fn [read-ch write-ch] nil)})))
+        {:server.config/server-handler (fn [ctx read-ch write-ch] nil)})))
 
 
 (defn make-default-handler-map
@@ -161,8 +161,8 @@
                                                   (channel-initializer netty-ch config))
                                                 (let [server-handler @handler-promise
                                                       context  (atom nil)
-                                                      read-ch  (read-channel-builder)
-                                                      write-ch (write-channel-builder)]
+                                                      read-ch  (read-channel-builder netty-ch)
+                                                      write-ch (write-channel-builder netty-ch)]
                                                   (append-preprocess-handler netty-ch context read-ch write-ch)
                                                   (server-handler context read-ch write-ch)))))
                                           (childOption ChannelOption/SO_KEEPALIVE true)
