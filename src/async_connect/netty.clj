@@ -51,10 +51,10 @@
               (<! write-ch)]
       (do
         (s/assert ::writedata data)
-        (thread
-          (write-if-possible ctx (or flush? close?) message promise)
-          (when close?
-            (.close ctx)))
+        (<! (thread
+              (write-if-possible ctx (or flush? close?) message promise)
+              (when close?
+                (.close ctx))))
         (recur))
       (do
         (log/debug "A writer-thread stops: " ctx)
