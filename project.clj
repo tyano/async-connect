@@ -3,7 +3,7 @@
   :url "https://github.com/tyano/async-connect"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.9.0-beta3"]
+  :dependencies [[org.clojure/clojure "1.9.0-RC1"]
                  [io.netty/netty-all "4.1.6.Final"]
                  [org.clojure/tools.logging "0.4.0"]
                  [org.clojure/core.async "0.3.443"]]
