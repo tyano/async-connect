@@ -11,7 +11,7 @@
                                          channel-handler-context-start
                                          default-channel-inactive
                                          default-channel-read
-                                         default-exception-caught]]
+                                         default-exception-caught] :as netty]
             [async-connect.netty.handler :refer [make-inbound-handler make-outbound-handler]]
             [async-connect.box :refer [boxed]])
   (:import [io.netty.bootstrap
@@ -36,26 +36,29 @@
               NioSocketChannel]))
 
 
-#_(s/def :client.config/channel-initializer
-   (s/fspec :args (s/cat :netty-channel :netty/socket-channel
-                         :config ::config)
-            :ret :netty/socket-channel))
+(alias 'client.config 'async-connect.client.config)
+(alias 'inbound 'async-connect.netty.handler.inbound)
 
-#_(s/def :client.config/bootstrap-initializer
-   (s/fspec :args (s/cat :bootstrap :netty/bootstrap)
-            :ret  :netty/bootstrap))
+(s/def ::client.config/channel-initializer
+   (s/fspec :args (s/cat :netty-channel ::netty/socket-channel
+                         :config ::config)
+            :ret ::netty/socket-channel))
+
+(s/def ::client.config/bootstrap-initializer
+   (s/fspec :args (s/cat :bootstrap ::netty/bootstrap)
+            :ret  ::netty/bootstrap))
 
 (s/def ::config
   (s/with-gen
     (s/keys
-      :opt [:client.config/bootstrap-initializer
-            :client.config/channel-initializer])
+      :opt [::client.config/bootstrap-initializer
+            ::client.config/channel-initializer])
     #(gen/one-of
         {}
-        {:client.config/bootstrap-initializer (fn [bootstrap] bootstrap)}
-        {:client.config/channel-initializer   (fn [channel config] channel)}
-        {:client.config/bootstrap-initializer (fn [bootstrap] bootstrap)
-         :client.config/channel-initializer   (fn [channel config] channel)})))
+        {::client.config/bootstrap-initializer (fn [bootstrap] bootstrap)}
+        {::client.config/channel-initializer   (fn [channel config] channel)}
+        {::client.config/bootstrap-initializer (fn [bootstrap] bootstrap)
+         ::client.config/channel-initializer   (fn [channel config] channel)})))
 
 (defn add-future-listener
   [^ChannelPromise prms read-ch]
@@ -75,20 +78,20 @@
 
 (s/fdef make-client-inbound-handler-map
   :args (s/cat :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
-  :ret  :inbound/handler-map)
+  :ret  ::inbound/handler-map)
 
 (defn make-client-inbound-handler-map
   [read-ch write-ch]
-  {:inbound/channel-read
+  {::inbound/channel-read
     (fn [ctx msg] (default-channel-read ctx msg read-ch))
 
-   :handler/handler-added
+   ::handler/handler-added
     (fn [ctx] (channel-handler-context-start ctx write-ch))
 
-   :inbound/channel-inactive
+   ::inbound/channel-inactive
     (fn [ctx] (default-channel-inactive ctx read-ch write-ch))
 
-   :inbound/exception-caught
+   ::inbound/exception-caught
     (fn [ctx, th] (default-exception-caught ctx th read-ch))})
 
 
@@ -120,11 +123,11 @@
 
 (s/fdef make-bootstrap
   :args (s/cat :config ::config)
-  :ret  :netty/bootstrap)
+  :ret  ::netty/bootstrap)
 
 (defn make-bootstrap
-  ([{:keys [:client.config/bootstrap-initializer
-            :client.config/channel-initializer]
+  ([{:keys [::client.config/bootstrap-initializer
+            ::client.config/channel-initializer]
       :as config}]
    (let [worker-group ^EventLoopGroup (NioEventLoopGroup.)]
      (let [bootstrap (.. (Bootstrap.)
@@ -150,20 +153,20 @@
    (make-bootstrap {})))
 
 
-(s/def :client/channel  (s/nilable :netty/channel))
-(s/def :client/context  ::spec/atom)
-(s/def :client/read-ch  ::spec/read-channel)
-(s/def :client/write-ch ::spec/write-channel)
-(s/def :client/connection
+(s/def ::channel  (s/nilable ::netty/channel))
+(s/def ::context  ::spec/atom)
+(s/def ::read-ch  ::spec/read-channel)
+(s/def ::write-ch ::spec/write-channel)
+(s/def ::connection
   (s/keys
-    :req [:client/channel
-          :client/context
-          :client/read-ch
-          :client/write-ch]))
+    :req [::channel
+          ::context
+          ::read-ch
+          ::write-ch]))
 
 (s/fdef close
-  :args (s/cat :connection :client/connection :close? (s/? boolean?))
-  :ret  :client/connection)
+  :args (s/cat :connection ::connection :close? (s/? boolean?))
+  :ret  ::connection)
 
 (defprotocol IConnection
   (close [this] [this force?]
@@ -173,7 +176,7 @@
     if `force?` is true, the connection must be really closed instead of returning it into a pool."))
 
 (defn close-connection
-  [{:keys [:client/channel :client/read-ch :client/write-ch] :as connection}]
+  [{::keys [channel read-ch write-ch] :as connection}]
   (when channel
     (.. ^SocketChannel channel
         (close)
@@ -185,7 +188,7 @@
 
   (when read-ch (close! read-ch))
   (when write-ch (close! write-ch))
-  (assoc connection :client/channel nil))
+  (assoc connection ::channel nil))
 
 
 (defrecord NettyConnection []
@@ -217,10 +220,10 @@
     (log/debug "connected:" (str "host: " host ", port: " port))
     (add-client-handler channel context read-chan write-chan)
 
-    (map->NettyConnection {:client/channel  channel
-                           :client/context  context
-                           :client/read-ch  read-chan
-                           :client/write-ch write-chan})))
+    (map->NettyConnection {::channel  channel
+                           ::context  context
+                           ::read-ch  read-chan
+                           ::write-ch write-chan})))
 
 (defrecord NettyConnectionFactory
   [bootstrap]
@@ -239,9 +242,9 @@
   :args (s/cat :factory   ::connection-factory
                :host      string?
                :port      pos-int?
-               :read-ch   (s/? (s/nilable :client/read-ch))
-               :write-ch  (s/? (s/nilable :client/write-ch)))
-  :ret  :client/connection)
+               :read-ch   (s/? (s/nilable ::read-ch))
+               :write-ch  (s/? (s/nilable ::write-ch)))
+  :ret  ::connection)
 
 (defn connect
   ([factory host port read-ch write-ch]
@@ -254,11 +257,11 @@
 
 
 (s/fdef closed?
-  :args (s/cat :connection :client/connection)
+  :args (s/cat :connection ::connection)
   :ret  boolean?)
 
 (defn closed?
-  [{:keys [:client/channel]}]
+  [{::keys [channel]}]
   (nil? channel))
 
 (defn sample-connect

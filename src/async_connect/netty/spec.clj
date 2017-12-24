@@ -93,16 +93,3 @@
     (write [this msg promise] (DefaultChannelPromise. (LocalChannel.)))
     (writeAndFlush [this msg] (DefaultChannelPromise. (LocalChannel.)))
     (writeAndFlush [this msg promise] (DefaultChannelPromise. (LocalChannel.)))))
-
-
-(s/def :netty/context (s/with-gen #(instance? ChannelHandlerContext %) #(agen/create (make-dummy-context))))
-(s/def :netty/message any?)
-(s/def :netty/channel-promise  (s/with-gen #(instance? ChannelPromise %) #(agen/create (DefaultChannelPromise. (LocalChannel.)))))
-(s/def :netty/channel          (s/with-gen #(instance? Channel %) #(agen/create (LocalChannel.))))
-(s/def :netty/bootstrap        (s/with-gen #(instance? Bootstrap %) #(agen/create (Bootstrap.))))
-(s/def :netty/server-bootstrap (s/with-gen #(instance? ServerBootstrap %) #(agen/create (ServerBootstrap.))))
-(s/def :netty/socket-channel   (s/with-gen #(instance? SocketChannel %) #(agen/create (NioSocketChannel.))))
-(s/def :netty/event-loop-group (s/with-gen #(instance? EventLoopGroup %) #(agen/create (NioEventLoopGroup.))))
-
-(s/def :netty/flush? boolean?)
-(s/def :netty/close? boolean?)
