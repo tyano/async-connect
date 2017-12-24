@@ -8,8 +8,8 @@
                                          default-channel-inactive
                                          default-channel-read
                                          default-exception-caught]]
-            [async-connect.netty.handler :refer [make-inbound-handler]]
-            [async-connect.netty.spec]
+            [async-connect.netty.handler :refer [make-inbound-handler] :as handler]
+            [async-connect.netty.spec :as netty-spec]
             [async-connect.spec :as spec]
             [async-connect.box :refer [boxed] :as box])
   (:import [java.net
@@ -39,74 +39,74 @@
            [io.netty.util
               ReferenceCountUtil]))
 
-(s/def :server.config/address (s/nilable string?))
-(s/def :server.config/port (s/or :zero zero? :pos pos-int?))
+(s/def ::address (s/nilable string?))
+(s/def ::port (s/or :zero zero? :pos pos-int?))
 
-(s/def :server.config/channel-initializer
-  (s/fspec :args (s/cat :netty-channel :netty/channel
+(s/def ::channel-initializer
+  (s/fspec :args (s/cat :netty-channel ::netty-spec/channel
                         :config ::config-no-initializer)
-           :ret :netty/channel))
+           :ret ::netty-spec/channel))
 
-(s/def :server.config/bootstrap-initializer
-  (s/fspec :args (s/cat :bootstrap :netty/server-bootstrap)
-           :ret  :netty/server-bootstrap))
+(s/def ::bootstrap-initializer
+  (s/fspec :args (s/cat :bootstrap ::netty-spec/server-bootstrap)
+           :ret  ::netty-spec/server-bootstrap))
 
-(s/def :server.config/read-channel-builder
-  (s/fspec :args (s/cat :channel :netty/channel) :ret ::spec/read-channel))
+(s/def ::read-channel-builder
+  (s/fspec :args (s/cat :channel ::netty-spec/channel) :ret ::spec/read-channel))
 
-(s/def :server.config/write-channel-builder
-  (s/fspec :args (s/cat :channel :netty/channel) :ret ::spec/write-channel))
+(s/def ::write-channel-builder
+  (s/fspec :args (s/cat :channel ::netty-spec/channel) :ret ::spec/write-channel))
 
-(s/def :server.config/server-handler
+(s/def ::server-handler
   (s/fspec :args (s/cat :context :spec/atom, :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
            :ret  any?))
 
-(s/def :server.config/server-handler-factory
+(s/def ::server-handler-factory
   (s/fspec :args (s/cat :address string? :port int?)
-           :ret  :server.config/server-handler))
+           :ret  ::server-handler))
 
-(s/def :server.config/close-handler
+(s/def ::close-handler
   (s/fspec :args empty? :ret any?))
 
-(s/def :server.config/boss-group :netty/event-loop-group)
-(s/def :server.config/worker-group :netty/event-loop-group)
+(s/def ::boss-group ::netty-spec/event-loop-group)
+(s/def ::worker-group ::netty-spec/event-loop-group)
 
 (s/def ::config-no-initializer
   (s/with-gen
     (s/keys
-      :req [:server.config/server-handler-factory]
-      :opt [:server.config/read-channel-builder
-            :server.config/write-channel-builder
-            :server.config/port
-            :server.config/bootstrap-initializer
-            :server.config/boss-group
-            :server.config/worker-group])
+      :req [::server-handler-factory]
+      :opt [::read-channel-builder
+            ::write-channel-builder
+            ::port
+            ::bootstrap-initializer
+            ::boss-group
+            ::worker-group])
     #(gen/return
-        {:server.config/server-handler-factory
+        {::server-handler-factory
           (fn [host port]
             (fn [ctx read-ch write-ch] nil))})))
 
 (s/def ::config
   (s/with-gen
     (s/merge
-      (s/keys :opt [:server.config/channel-initializer])
+      (s/keys :opt [::channel-initializer])
       ::config-no-initializer)
     #(gen/return
-        {:server.config/server-handler (fn [ctx read-ch write-ch] nil)})))
+        {::server-handler (fn [ctx read-ch write-ch] nil)})))
 
 
 (defn make-default-handler-map
   [read-ch write-ch]
-  {:inbound/channel-read
+  {:handler/channel-read
     (fn [ctx msg] (default-channel-read ctx msg read-ch))
 
-   :inbound/channel-active
+   :handler/channel-active
     (fn [ctx] (channel-handler-context-start ctx write-ch))
 
-   :inbound/channel-inactive
+   :handler/channel-inactive
     (fn [ctx] (default-channel-inactive ctx read-ch write-ch))
 
-   :inbound/exception-caught
+   :handler/exception-caught
     (fn [ctx, th] (default-exception-caught ctx th read-ch))})
 
 (defn append-preprocess-handler
@@ -132,15 +132,15 @@
   :ret  #(instance? IServer %))
 
 (defn run-server
-  [{:keys [:server.config/server-handler-factory
-           :server.config/address
-           :server.config/port
-           :server.config/channel-initializer
-           :server.config/bootstrap-initializer
-           :server.config/read-channel-builder
-           :server.config/write-channel-builder
-           :server.config/boss-group
-           :server.config/worker-group]
+  [{:keys [::server-handler-factory
+           ::address
+           ::port
+           ::channel-initializer
+           ::bootstrap-initializer
+           ::read-channel-builder
+           ::write-channel-builder
+           ::boss-group
+           ::worker-group]
       :or {port 0
            read-channel-builder #(chan)
            write-channel-builder #(chan)
@@ -148,7 +148,7 @@
            worker-group (NioEventLoopGroup.)}
       :as config}]
 
-  {:pre [config (:server.config/server-handler-factory config)]}
+  {:pre [config (::server-handler-factory config)]}
 
   (let [server-address (when address (InetAddress/getByName address))
         handler-promise (promise)

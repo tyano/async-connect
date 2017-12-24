@@ -12,7 +12,8 @@
                                          default-channel-inactive
                                          default-channel-read
                                          default-exception-caught] :as netty]
-            [async-connect.netty.handler :refer [make-inbound-handler make-outbound-handler]]
+            [async-connect.netty.spec :as netty-spec]
+            [async-connect.netty.handler :refer [make-inbound-handler make-outbound-handler] :as handler]
             [async-connect.box :refer [boxed]])
   (:import [io.netty.bootstrap
               Bootstrap]
@@ -35,30 +36,26 @@
            [io.netty.channel.socket.nio
               NioSocketChannel]))
 
-
-(alias 'client.config 'async-connect.client.config)
-(alias 'inbound 'async-connect.netty.handler.inbound)
-
-(s/def ::client.config/channel-initializer
-   (s/fspec :args (s/cat :netty-channel ::netty/socket-channel
+(s/def ::channel-initializer
+   (s/fspec :args (s/cat :netty-channel ::netty-spec/socket-channel
                          :config ::config)
-            :ret ::netty/socket-channel))
+            :ret ::netty-spec/socket-channel))
 
-(s/def ::client.config/bootstrap-initializer
-   (s/fspec :args (s/cat :bootstrap ::netty/bootstrap)
-            :ret  ::netty/bootstrap))
+(s/def ::bootstrap-initializer
+   (s/fspec :args (s/cat :bootstrap ::netty-spec/bootstrap)
+            :ret  ::netty-spec/bootstrap))
 
 (s/def ::config
   (s/with-gen
     (s/keys
-      :opt [::client.config/bootstrap-initializer
-            ::client.config/channel-initializer])
+      :opt [::bootstrap-initializer
+            ::channel-initializer])
     #(gen/one-of
         {}
-        {::client.config/bootstrap-initializer (fn [bootstrap] bootstrap)}
-        {::client.config/channel-initializer   (fn [channel config] channel)}
-        {::client.config/bootstrap-initializer (fn [bootstrap] bootstrap)
-         ::client.config/channel-initializer   (fn [channel config] channel)})))
+        {::bootstrap-initializer (fn [bootstrap] bootstrap)}
+        {::channel-initializer   (fn [channel config] channel)}
+        {::bootstrap-initializer (fn [bootstrap] bootstrap)
+         ::channel-initializer   (fn [channel config] channel)})))
 
 (defn add-future-listener
   [^ChannelPromise prms read-ch]
@@ -78,20 +75,20 @@
 
 (s/fdef make-client-inbound-handler-map
   :args (s/cat :read-ch ::spec/read-channel, :write-ch ::spec/write-channel)
-  :ret  ::inbound/handler-map)
+  :ret  ::handler/inbound-handler-map)
 
 (defn make-client-inbound-handler-map
   [read-ch write-ch]
-  {::inbound/channel-read
+  {::handler/channel-read
     (fn [ctx msg] (default-channel-read ctx msg read-ch))
 
    ::handler/handler-added
     (fn [ctx] (channel-handler-context-start ctx write-ch))
 
-   ::inbound/channel-inactive
+   ::handler/channel-inactive
     (fn [ctx] (default-channel-inactive ctx read-ch write-ch))
 
-   ::inbound/exception-caught
+   ::handler/exception-caught
     (fn [ctx, th] (default-exception-caught ctx th read-ch))})
 
 
@@ -123,11 +120,11 @@
 
 (s/fdef make-bootstrap
   :args (s/cat :config ::config)
-  :ret  ::netty/bootstrap)
+  :ret  ::netty-spec/bootstrap)
 
 (defn make-bootstrap
-  ([{:keys [::client.config/bootstrap-initializer
-            ::client.config/channel-initializer]
+  ([{:keys [::bootstrap-initializer
+            ::channel-initializer]
       :as config}]
    (let [worker-group ^EventLoopGroup (NioEventLoopGroup.)]
      (let [bootstrap (.. (Bootstrap.)

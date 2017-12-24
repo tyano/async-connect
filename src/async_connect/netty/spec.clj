@@ -31,7 +31,10 @@
               AttributeKey
               Attribute]
            [io.netty.util.concurrent
-              GlobalEventExecutor]))
+              GlobalEventExecutor]
+           [java.net
+              SocketAddress
+              InetSocketAddress]))
 
 (def ^:private dummy-handler (ChannelInboundHandlerAdapter.))
 
@@ -93,3 +96,14 @@
     (write [this msg promise] (DefaultChannelPromise. (LocalChannel.)))
     (writeAndFlush [this msg] (DefaultChannelPromise. (LocalChannel.)))
     (writeAndFlush [this msg promise] (DefaultChannelPromise. (LocalChannel.)))))
+
+
+(s/def ::context (s/with-gen #(instance? ChannelHandlerContext %) #(agen/create (make-dummy-context))))
+(s/def ::channel-promise  (s/with-gen #(instance? ChannelPromise %) #(agen/create (DefaultChannelPromise. (LocalChannel.)))))
+(s/def ::channel          (s/with-gen #(instance? Channel %) #(agen/create (LocalChannel.))))
+(s/def ::bootstrap        (s/with-gen #(instance? Bootstrap %) #(agen/create (Bootstrap.))))
+(s/def ::server-bootstrap (s/with-gen #(instance? ServerBootstrap %) #(agen/create (ServerBootstrap.))))
+(s/def ::socket-channel   (s/with-gen #(instance? SocketChannel %) #(agen/create (NioSocketChannel.))))
+(s/def ::event-loop-group (s/with-gen #(instance? EventLoopGroup %) #(agen/create (NioEventLoopGroup.))))
+(s/def ::throwable (s/with-gen #(instance? Throwable %) #(agen/create (Exception.))))
+(s/def ::socket-address (s/with-gen #(instance? SocketAddress %) #(agen/create (InetSocketAddress. 21312))))

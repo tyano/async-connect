@@ -1,7 +1,7 @@
 (ns async-connect.netty.handler
   (:require [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as gen]
-            [async-connect.netty.spec]
+            [async-connect.netty.spec :as netty]
             [async-connect.spec.generator :as agen]
             [clojure.tools.logging :as log])
   (:import [clojure.core.async.impl.channels ManyToManyChannel]
@@ -15,51 +15,45 @@
               ChannelOutboundHandlerAdapter
               ChannelPromise]
            [java.net
-              SocketAddress
-              InetSocketAddress]))
+              SocketAddress]))
 
 (declare make-inbound-handler make-outbound-handler)
 
-
-(s/def ::throwable (s/with-gen #(instance? Throwable %) #(agen/create (Exception.))))
-(s/def ::socket-address (s/with-gen #(instance? SocketAddress %) #(agen/create (InetSocketAddress. 21312))))
 (s/def ::channel-inbound-handler (s/with-gen #(instance? ChannelInboundHandler %) #(agen/create (make-inbound-handler {}))))
 (s/def ::channel-outbound-handler (s/with-gen #(instance? ChannelOutboundHandler %) #(agen/create (make-outbound-handler {}))))
 
 (s/def ::handler-added         (s/fspec :args (s/cat :ctx :netty/context)))
 (s/def ::handler-removed       (s/fspec :args (s/cat :ctx :netty/context)))
 
-(alias 'inbound 'async-connect.netty.handler.inbound)
+(s/def ::channel-active        (s/fspec :args (s/cat :ctx ::netty/context)))
+(s/def ::channel-inactive      (s/fspec :args (s/cat :ctx ::netty/context)))
+(s/def ::channel-read          (s/fspec :args (s/cat :ctx ::netty/context :obj any?)))
+(s/def ::channel-read-complete (s/fspec :args (s/cat :ctx ::netty/context)))
+(s/def ::channel-registered    (s/fspec :args (s/cat :ctx ::netty/context)))
+(s/def ::channel-unregistered  (s/fspec :args (s/cat :ctx ::netty/context)))
+(s/def ::channel-writability-changed
+                                       (s/fspec :args (s/cat :ctx ::netty/context)))
+(s/def ::exception-caught      (s/fspec :args (s/cat :ctx ::netty/context :throwable ::throwable)))
+(s/def ::user-event-triggered  (s/fspec :args (s/cat :ctx ::netty/context :event any?)))
 
-(s/def ::inbound/channel-active        (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def ::inbound/channel-inactive      (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def ::inbound/channel-read          (s/fspec :args (s/cat :ctx :netty/context :obj any?)))
-(s/def ::inbound/channel-read-complete (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def ::inbound/channel-registered    (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def ::inbound/channel-unregistered  (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def ::inbound/channel-writability-changed
-                                       (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def ::inbound/exception-caught      (s/fspec :args (s/cat :ctx :netty/context :throwable ::throwable)))
-(s/def ::inbound/user-event-triggered  (s/fspec :args (s/cat :ctx :netty/context :event any?)))
-
-(s/def ::inbound/handler-map
+(s/def ::inbound-handler-map
   (s/with-gen
     (s/keys
       :opt [::handler-added
             ::handler-removed
-            ::inbound/channel-active
-            ::inbound/channel-inactive
-            ::inbound/channel-read
-            ::inbound/channel-read-complete
-            ::inbound/channel-registered
-            ::inbound/channel-unregistered
-            ::inbound/channel-writability-changed
-            ::inbound/exception-caught
-            ::inbound/user-event-triggered])
+            ::channel-active
+            ::channel-inactive
+            ::channel-read
+            ::channel-read-complete
+            ::channel-registered
+            ::channel-unregistered
+            ::channel-writability-changed
+            ::exception-caught
+            ::user-event-triggered])
     #(gen/one-of {})))
 
 (s/fdef make-inbound-handler
-  :args (s/cat :handlers ::inbound/handler-map)
+  :args (s/cat :handlers ::inbound-handler-map)
   :ret  ::channel-inbound-handler)
 
 (defn make-inbound-handler
@@ -83,63 +77,63 @@
       (channelActive
         [^ChannelHandlerContext ctx]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/channel-active handlers)]
+        (if-let [h (::channel-active handlers)]
           (h ctx)
           (proxy-super channelActive ctx)))
 
       (channelInactive
         [^ChannelHandlerContext ctx]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/channel-inactive handlers)]
+        (if-let [h (::channel-inactive handlers)]
           (h ctx)
           (proxy-super channelInactive ctx)))
 
       (channelRead
         [^ChannelHandlerContext ctx, ^Object msg]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/channel-read handlers)]
+        (if-let [h (::channel-read handlers)]
           (h ctx msg)
           (proxy-super channelRead ctx msg)))
 
       (channelReadComplete
         [^ChannelHandlerContext ctx]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/channel-read-complete handlers)]
+        (if-let [h (::channel-read-complete handlers)]
           (h ctx)
           (proxy-super channelReadComplete ctx)))
 
       (channelRegistered
         [^ChannelHandlerContext ctx]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/channel-registered handlers)]
+        (if-let [h (::channel-registered handlers)]
           (h ctx)
           (proxy-super channelRegistered ctx)))
 
       (channelUnregistered
         [^ChannelHandlerContext ctx]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/channel-unregistered handlers)]
+        (if-let [h (::channel-unregistered handlers)]
           (h ctx)
           (proxy-super channelUnregistered ctx)))
 
       (channelWritabilityChanged
         [^ChannelHandlerContext ctx]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/channel-writability-changed handlers)]
+        (if-let [h (::channel-writability-changed handlers)]
           (h ctx)
           (proxy-super channelWritabilityChanged ctx)))
 
       (exceptionCaught
         [^ChannelHandlerContext ctx, ^Throwable cause]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/exception-caught handlers)]
+        (if-let [h (::exception-caught handlers)]
           (h ctx cause)
           (proxy-super exceptionCaught ctx cause)))
 
       (userEventTriggered
         [^ChannelHandlerContext ctx, ^Object evt]
         (when context (reset! context ctx))
-        (if-let [h (::inbound/user-event-triggered handlers)]
+        (if-let [h (::user-event-triggered handlers)]
           (h ctx evt)
           (proxy-super userEventTriggered ctx evt)))))
 
@@ -147,46 +141,44 @@
    (make-inbound-handler nil handlers)))
 
 
-(alias 'outbound 'async-connect.netty.handler.outbound)
+(s/def ::bind    (s/fspec :args (s/cat :ctx ::netty/context
+                                                :local-address ::netty/socket-address
+                                                :promise ::netty/channel-promise)))
 
-(s/def ::outbound/bind    (s/fspec :args (s/cat :ctx :netty/context
-                                                :local-address ::socket-address
+(s/def ::close   (s/fspec :args (s/cat :ctx ::netty/context
+                                                :promise ::netty/channel-promise)))
+
+(s/def ::connect (s/fspec :args (s/cat :ctx ::netty/context
+                                                :remote-addr ::netty/socket-address
+                                                :local-addr ::netty/socket-address
                                                 :promise :netty/channel-promise)))
 
-(s/def ::outbound/close   (s/fspec :args (s/cat :ctx :netty/context
-                                                :promise :netty/channel-promise)))
+(s/def ::deregister (s/fspec :args (s/cat :ctx ::netty/context, :promise ::netty/channel-promise)))
+(s/def ::disconnect (s/fspec :args (s/cat :ctx ::netty/context, :promise ::netty/channel-promise)))
+(s/def ::flush      (s/fspec :args (s/cat :ctx ::netty/context)))
+(s/def ::read       (s/fspec :args (s/cat :ctx ::netty/context)))
+(s/def ::write      (s/fspec :args (s/cat :ctx ::netty/context, :msg any?, :promise ::netty/channel-promise)))
 
-(s/def ::outbound/connect (s/fspec :args (s/cat :ctx :netty/context
-                                                :remote-addr ::socket-address
-                                                :local-addr ::socket-address
-                                                :promise :netty/channel-promise)))
-
-(s/def ::outbound/deregister (s/fspec :args (s/cat :ctx :netty/context, :promise :netty/channel-promise)))
-(s/def ::outbound/disconnect (s/fspec :args (s/cat :ctx :netty/context, :promise :netty/channel-promise)))
-(s/def ::outbound/flush      (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def ::outbound/read       (s/fspec :args (s/cat :ctx :netty/context)))
-(s/def ::outbound/write      (s/fspec :args (s/cat :ctx :netty/context, :msg any?, :promise :netty/channel-promise)))
-
-(s/def ::outbound/handler-map
+(s/def ::outbound-handler-map
   (s/with-gen
     (s/keys
       :opt [::handler-added
             ::handler-removed
-            ::outbound/bind
-            ::outbound/close
-            ::outbound/connect
-            ::outbound/deregister
-            ::outbound/disconnect
-            ::outbound/flush
-            ::outbound/read
-            ::outbound/write])
+            ::bind
+            ::close
+            ::connect
+            ::deregister
+            ::disconnect
+            ::flush
+            ::read
+            ::write])
     #(gen/one-of
         {}
-        {::outbound/read (fn [ctx] nil)})))
+        {::read (fn [ctx] nil)})))
 
 
 (s/fdef make-outbound-handler
-  :args (s/cat :handlers ::outbound/handler-map)
+  :args (s/cat :handlers ::outbound-handler-map)
   :ret  ::channel-inbound-handler)
 
 
@@ -210,56 +202,56 @@
       (bind
         [^ChannelHandlerContext ctx, ^SocketAddress local-address, ^ChannelPromise promise]
         (when context (reset! context ctx))
-        (if-let [h (::outbound/bind handlers)]
+        (if-let [h (::bind handlers)]
           (h ctx local-address promise)
           (proxy-super bind ctx local-address promise)))
 
       (close
         [^ChannelHandlerContext ctx, ^ChannelPromise promise]
         (when context (reset! context ctx))
-        (if-let [h (::outbound/close handlers)]
+        (if-let [h (::close handlers)]
           (h ctx promise)
           (proxy-super close ctx promise)))
 
       (connect
         [^ChannelHandlerContext ctx, ^SocketAddress remote-address, ^SocketAddress local-address, ^ChannelPromise promise]
         (when context (reset! context ctx))
-        (if-let [h (::outbound/connect handlers)]
+        (if-let [h (::connect handlers)]
           (h ctx remote-address local-address promise)
           (proxy-super connect ctx remote-address local-address promise)))
 
       (deregister
         [^ChannelHandlerContext ctx, ^ChannelPromise promise]
         (when context (reset! context ctx))
-        (if-let [h (::outbound/disconnect handlers)]
+        (if-let [h (::disconnect handlers)]
           (h ctx promise)
           (proxy-super deregister ctx promise)))
 
       (disconnect
         [^ChannelHandlerContext ctx, ^ChannelPromise promise]
         (when context (reset! context ctx))
-        (if-let [h (::outbound/disconnect handlers)]
+        (if-let [h (::disconnect handlers)]
           (h ctx promise)
           (proxy-super disconnect ctx promise)))
 
       (flush
         [^ChannelHandlerContext ctx]
         (when context (reset! context ctx))
-        (if-let [h (::outbound/flush handlers)]
+        (if-let [h (::flush handlers)]
           (h ctx)
           (proxy-super flush ctx)))
 
       (read
         [^ChannelHandlerContext ctx]
         (when context (reset! context ctx))
-        (if-let [h (::outbound/read handlers)]
+        (if-let [h (::read handlers)]
           (h ctx)
           (proxy-super read ctx)))
 
       (write
         [^ChannelHandlerContext ctx, ^Object msg, ^ChannelPromise promise]
         (when context (reset! context ctx))
-        (if-let [h (::outbound/write handlers)]
+        (if-let [h (::write handlers)]
           (h ctx msg promise)
           (proxy-super write ctx msg promise)))))
 

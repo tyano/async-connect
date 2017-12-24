@@ -2,7 +2,8 @@
   (:require [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as gen]
             [async-connect.spec.generator :as agen]
-            [async-connect.netty.spec :refer [make-dummy-context]]
+            [async-connect.netty.spec :as netty]
+            [async-connect.client.spec :as client]
             [clojure.tools.logging :as log]
             [async-connect.box :refer [boxed] :as box]
             [clojure.core.async :refer [>!! <!! >! <! thread close! go go-loop put!]])
@@ -10,23 +11,11 @@
               ByteBuf
               Unpooled]
            [io.netty.channel
+              Channel
               ChannelHandlerContext
-              ChannelPromise
-              Channel]
+              ChannelPromise]
            [io.netty.util
               ReferenceCountUtil]))
-
-
-(s/def ::context (s/with-gen #(instance? ChannelHandlerContext %) #(agen/create (make-dummy-context))))
-(s/def ::message any?)
-(s/def ::channel-promise  (s/with-gen #(instance? ChannelPromise %) #(agen/create (DefaultChannelPromise. (LocalChannel.)))))
-(s/def ::channel          (s/with-gen #(instance? Channel %) #(agen/create (LocalChannel.))))
-(s/def ::bootstrap        (s/with-gen #(instance? Bootstrap %) #(agen/create (Bootstrap.))))
-(s/def ::server-bootstrap (s/with-gen #(instance? ServerBootstrap %) #(agen/create (ServerBootstrap.))))
-(s/def ::socket-channel   (s/with-gen #(instance? SocketChannel %) #(agen/create (NioSocketChannel.))))
-(s/def ::event-loop-group (s/with-gen #(instance? EventLoopGroup %) #(agen/create (NioEventLoopGroup.))))
-(s/def ::flush? boolean?)
-(s/def ::close? boolean?)
 
 (defn write-if-possible
   [^ChannelHandlerContext ctx, flush?, data, ^ChannelPromise promise]
@@ -40,16 +29,6 @@
           (Thread/sleep 200)
           (recur (.isWritable netty-ch)))))))
 
-
-(s/def :writedata/promise :netty/channel-promise)
-
-(s/def ::writedata
-  (s/keys
-    :req-un [:netty/message]
-    :opt-un [:netty/flush?
-             :netty/close?
-             :writedata/promise]))
-
 (defn channel-handler-context-start
   [^ChannelHandlerContext ctx, write-ch]
   (log/debug "context-start: " ctx)
@@ -61,7 +40,7 @@
                  :as data}
               (<! write-ch)]
       (do
-        (s/assert ::writedata data)
+        (s/assert ::client/writedata data)
         (<! (thread
               (write-if-possible ctx (or flush? close?) message promise)
               (when close?
