@@ -97,16 +97,16 @@
 
 (defn make-default-handler-map
   [read-ch write-ch]
-  {:handler/channel-read
+  {::handler/channel-read
     (fn [ctx msg] (default-channel-read ctx msg read-ch))
 
-   :handler/channel-active
+   ::handler/channel-active
     (fn [ctx] (channel-handler-context-start ctx write-ch))
 
-   :handler/channel-inactive
+   ::handler/channel-inactive
     (fn [ctx] (default-channel-inactive ctx read-ch write-ch))
 
-   :handler/exception-caught
+   ::handler/exception-caught
     (fn [ctx, th] (default-exception-caught ctx th read-ch))})
 
 (defn append-preprocess-handler

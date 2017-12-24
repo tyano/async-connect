@@ -25,10 +25,10 @@
 
 (defn -main
   [& args]
-  (let [config   {:server.config/port 8080
-                  :server.config/read-channel-builder #(chan 1 bytebuf->string)
-                  :server.config/write-channel-builder #(chan 1 string->bytebuf)
-                  :server.config/server-handler server-handler}]
+  (let [config   {::server/port 8080
+                  ::server/read-channel-builder #(chan 1 bytebuf->string)
+                  ::server/write-channel-builder #(chan 1 string->bytebuf)
+                  ::server/server-handler server-handler}]
     (s/assert ::server/config config)
 
     (-> (run-server config)

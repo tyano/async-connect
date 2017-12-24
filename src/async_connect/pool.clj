@@ -21,17 +21,17 @@
               IdleStateEvent
               IdleState]))
 
-(s/def :pool/host string?)
-(s/def :pool/port pos-int?)
-(s/def :pool/key
-  (s/keys :req [:pool/host :pool/port]))
+(s/def ::host string?)
+(s/def ::port pos-int?)
+(s/def :async-connect/pool
+  (s/keys :req [::host ::port]))
 
 (defn- make-pool-key
   [host port]
-  {:pool/host host, :pool/port port})
+  {::host host, ::port port})
 
 (defn remove-from-pool
-  [pooled-connections {:keys [:pool/host :pool/port] :as conn}]
+  [pooled-connections {:keys [::host ::port] :as conn}]
   (let [pool-key (make-pool-key host port)]
     (locking pooled-connections
       (log/trace "removing a connection:" conn)
@@ -50,7 +50,7 @@
         (some #(= % torn-conn) conns)))))
 
 (defn- close-physical-connection
-  [{:keys [:pool/host :pool/port] :as conn} force-close?]
+  [{:keys [::host ::port] :as conn} force-close?]
   (when conn
     (let [pool-key (make-pool-key host port)
           pooled-connections (:pooled-connections conn)
@@ -89,7 +89,7 @@
 (extend-type PooledConnection
   IConnection
   (close
-    ([{:keys [:pool/host :pool/port] :as conn} force?]
+    ([{:keys [::host ::port] :as conn} force?]
      (if force?
        (close-physical-connection conn true)
        (let [pool-key (make-pool-key host port)
@@ -126,11 +126,11 @@
         (map->PooledConnection (assoc found :pooled-connections pooled-connections)))
       (do
         (log/trace "no pooled connection is found. create a new one.")
-        (let [{:keys [:client/channel] :as new-conn}
+        (let [{::client/keys [channel] :as new-conn}
               (merge (->PooledConnection pooled-connections)
                     (client/connect factory host port read-ch write-ch)
-                    {:pool/host host
-                     :pool/port port})]
+                    {::host host
+                     ::port port})]
 
           ;; add an IdleStateHandler to a pipeline of this netty channel.
           (let [pipeline ^ChannelPipeline (.pipeline ^SocketChannel channel)]
