@@ -17,4 +17,5 @@
               {:resource-paths ["resources-release"]}}
 
   :main async-connect.core
-  :aot [async-connect.core])
+  :aot [async-connect.core]
+  :javac-options ["-source" "1.8" "-target" "1.8"])
