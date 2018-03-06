@@ -37,7 +37,9 @@
            [io.netty.channel.socket.nio
               NioServerSocketChannel]
            [io.netty.util
-              ReferenceCountUtil]))
+              ReferenceCountUtil]
+           [io.netty.util.concurrent
+              GenericFutureListener]))
 
 (s/def ::address (s/nilable string?))
 (s/def ::port (s/or :zero zero? :pos pos-int?))
@@ -71,6 +73,13 @@
 (s/def ::boss-group ::netty-spec/event-loop-group)
 (s/def ::worker-group ::netty-spec/event-loop-group)
 
+(s/def ::shutdown-hook (s/fspec
+                        :args (s/cat
+                               :server-info (s/keys
+                                             :req-un [:server-info/host
+                                                      :server-info/port]))
+                        :ret any?))
+
 (s/def ::config-no-initializer
   (s/with-gen
     (s/keys
@@ -80,7 +89,8 @@
             ::port
             ::bootstrap-initializer
             ::boss-group
-            ::worker-group])
+            ::worker-group
+            ::shutdown-hook])
     #(gen/return
         {::server-handler-factory
           (fn [host port]
@@ -125,7 +135,8 @@
 
 (defprotocol IServer
   (close-wait [this close-handler])
-  (port [this]))
+  (port [this])
+  (shutdown [this]))
 
 (s/fdef run-server
   :args (s/cat :config ::config)
@@ -140,7 +151,8 @@
            ::read-channel-builder
            ::write-channel-builder
            ::boss-group
-           ::worker-group]
+           ::worker-group
+           ::shutdown-hook]
       :or {port 0
            read-channel-builder #(chan)
            write-channel-builder #(chan)
@@ -209,10 +221,16 @@
               (.sync))
             (finally
               (when close-handler (close-handler))
-              (.shutdownGracefully ^EventLoopGroup worker-group)
-              (.shutdownGracefully ^EventLoopGroup boss-group))))
+              (.shutdownGracefully ^EventLoopGroup (.group bootstrap)))))
 
-        (port [this] (:port @server-promise))))))
+        (port [this] (:port @server-promise))
 
-
+        (shutdown [this]
+          (when shutdown-hook
+            (shutdown-hook @server-promise))
+          (-> (.shutdownGracefully ^EventLoopGroup (.group bootstrap))
+              (.addListener
+               (reify GenericFutureListener
+                 (operationComplete [this future]
+                   (log/info "Server stopped."))))))))))
 
