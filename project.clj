@@ -9,10 +9,12 @@
                  [org.clojure/core.async "0.4.474"]]
 
   :profiles {:dev
-              {:dependencies [[ch.qos.logback/logback-classic "1.2.3"]
-                              [org.clojure/tools.namespace "0.2.11"]
-                              [org.clojure/test.check "0.9.0"]]
-               :resource-paths ["resources-dev"]}
+             {:dependencies [[org.clojure/tools.namespace "0.2.11"]
+                             [org.clojure/test.check "0.9.0"]]
+              :resource-paths ["resources-dev"]}
+             :logging
+             {:dependencies [[ch.qos.logback/logback-classic "1.2.3"]]
+              :resource-paths ["resources-logging"]}
              :release
               {:resource-paths ["resources-release"]}}
 
