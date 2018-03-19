@@ -227,13 +227,13 @@
   IConnectionFactory
   (create-connection
     [this host port read-ch write-ch]
-    (connect* (:bootstrap this) host port read-ch write-ch)))
+    (connect* @bootstrap host port read-ch write-ch)))
 
 (defn connection-factory
-  ([bootstrap]
-   (->NettyConnectionFactory bootstrap))
+  ([bootstrap-delay]
+   (->NettyConnectionFactory bootstrap-delay))
   ([]
-   (connection-factory (make-bootstrap {}))))
+   (connection-factory (delay (make-bootstrap {})))))
 
 (s/fdef connect
   :args (s/cat :factory   ::connection-factory
