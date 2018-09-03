@@ -1,6 +1,5 @@
 (ns async-connect.client
   (:require [clojure.spec.alpha :as s]
-            [clojure.spec.gen.alpha :as gen]
             [clojure.spec.test.alpha :refer [with-instrument-disabled]]
             [clojure.tools.logging :as log]
             [clojure.core.async :refer [>!! <!! >! <! thread close! chan go go-loop]]
@@ -46,16 +45,9 @@
             :ret  ::netty-spec/bootstrap))
 
 (s/def ::config
-  (s/with-gen
-    (s/keys
-      :opt [::bootstrap-initializer
-            ::channel-initializer])
-    #(gen/one-of
-        {}
-        {::bootstrap-initializer (fn [bootstrap] bootstrap)}
-        {::channel-initializer   (fn [channel config] channel)}
-        {::bootstrap-initializer (fn [bootstrap] bootstrap)
-         ::channel-initializer   (fn [channel config] channel)})))
+  (s/keys
+   :opt [::bootstrap-initializer
+         ::channel-initializer]))
 
 (defn add-future-listener
   [^ChannelPromise prms read-ch]

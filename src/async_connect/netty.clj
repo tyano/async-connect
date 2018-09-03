@@ -1,9 +1,7 @@
 (ns async-connect.netty
   (:require [clojure.spec.alpha :as s]
-            [clojure.spec.gen.alpha :as gen]
-            [async-connect.spec.generator :as agen]
             [async-connect.netty.spec :as netty]
-            [async-connect.client.spec :as client]
+            [async-connect.message :as message]
             [clojure.tools.logging :as log]
             [async-connect.box :refer [boxed] :as box]
             [clojure.core.async :refer [>!! <!! >! <! thread close! go go-loop put!]])
@@ -33,16 +31,16 @@
   [^ChannelHandlerContext ctx, write-ch]
   (log/debug "context-start: " ctx)
   (go-loop []
-    (if-some [{:keys [message flush? close? ^ChannelPromise promise]
+    (if-some [{::message/keys [data flush? close? ^ChannelPromise promise]
                  :or {flush? false
                       close? false
                       promise ^ChannelPromise (.voidPromise ctx)}
-                 :as data}
+                 :as msg}
               (<! write-ch)]
       (do
-        (s/assert ::client/writedata data)
+        (s/assert :async-connect/message msg)
         (<! (thread
-              (write-if-possible ctx (or flush? close?) message promise)
+              (write-if-possible ctx (or flush? close?) data promise)
               (when close?
                 (.close ctx))))
         (recur))
@@ -83,12 +81,12 @@
   (box/update data #(String. ^bytes %)))
 
 (defn string->bytes
-  [data]
-  (update data :message #(.getBytes ^String % "UTF-8")))
+  [msg]
+  (update msg ::message/data #(.getBytes ^String % "UTF-8")))
 
 (defn- bytes->bytebuf
-  [data]
-  (update data :message #(Unpooled/wrappedBuffer ^bytes %)))
+  [msg]
+  (update msg ::message/data #(Unpooled/wrappedBuffer ^bytes %)))
 
 (def bytebuf->string (comp (map bytebuf->bytes) (map bytes->string)))
 (def string->bytebuf (comp (map string->bytes) (map bytes->bytebuf)))
