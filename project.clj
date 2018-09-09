@@ -1,4 +1,4 @@
-(defproject async-connect "0.2.0-SNAPSHOT"
+(defproject async-connect "0.2.1-SNAPSHOT"
   :description "A tcp/ip server/client implementations for Clojure with core.async"
   :url "https://github.com/tyano/async-connect"
   :license {:name "Eclipse Public License"

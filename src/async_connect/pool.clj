@@ -31,11 +31,11 @@
   {::host host, ::port port})
 
 (defn remove-from-pool
-  [pooled-connections {:keys [::host ::port] :as conn}]
+  [pooled-connections-ref {:keys [::host ::port] :as conn}]
   (let [pool-key (make-pool-key host port)]
-    (locking pooled-connections
-      (log/trace "removing a connection:" conn)
-      (swap! pooled-connections update pool-key #(when % (vec (filter (fn [c] (not= c conn)) %)))))
+    (log/trace "removing a connection:" conn)
+    (dosync
+     (alter pooled-connections-ref update pool-key #(when % (vec (filter (fn [c] (not= c conn)) %)))))
     nil))
 
 (defn- make-idle-state-handler
@@ -43,25 +43,25 @@
   (IdleStateHandler. (int 0) (int 0) (int (or timeout-sec 0))))
 
 (defn- pooled?
-  [pooled-connections pool-key torn-conn]
-  (locking pooled-connections
-    (boolean
-      (if-let [conns (get @pooled-connections pool-key)]
-        (some #(= % torn-conn) conns)))))
+  [pooled-connections-map pool-key conn-without-pool]
+  (boolean
+   (if-let [conns (get pooled-connections-map pool-key)]
+     (some #(= % conn-without-pool) conns))))
 
 (defn- close-physical-connection
   [{:keys [::host ::port] :as conn} force-close?]
   (when conn
     (let [pool-key (make-pool-key host port)
-          pooled-connections (:pooled-connections conn)
-          must-remove? (locking pooled-connections
-                          (let [torn-conn   (dissoc conn :pooled-connections)
-                                must-remove? (pooled? pooled-connections pool-key torn-conn)]
+          pooled-connections-ref (:pooled-connections conn)
+          must-remove? (dosync
+                        (let [pooled-conn-map   (ensure pooled-connections-ref)
+                              conn-without-pool (dissoc conn :pooled-connections)
+                              must-remove?      (pooled? pooled-conn-map pool-key conn-without-pool)]
 
                             ;; remove this connection from connection-pool.
                             (when must-remove?
-                              (log/trace "remove a connection:" (pr-str torn-conn))
-                              (remove-from-pool pooled-connections torn-conn))
+                              (log/trace "remove a connection:" (pr-str conn-without-pool))
+                              (remove-from-pool pooled-connections-ref conn-without-pool))
 
                             must-remove?))]
 
@@ -93,11 +93,11 @@
      (if force?
        (close-physical-connection conn true)
        (let [pool-key (make-pool-key host port)
-             pooled-connections (:pooled-connections conn)]
-         (locking pooled-connections
-           (let [torn-conn (dissoc conn :pooled-connections)]
-             (log/trace "returning a connection:" torn-conn)
-             (swap! pooled-connections update pool-key #(if % (vec (cons torn-conn %)) [torn-conn]))))
+             pooled-connections-ref (:pooled-connections conn)
+             conn-without-conn (dissoc conn :pooled-connections)]
+         (log/trace "returning a connection:" conn-without-conn)
+         (dosync
+          (alter pooled-connections-ref update pool-key #(if % (vec (cons conn-without-conn %)) [conn-without-conn])))
          nil)))
 
     ([this]
@@ -110,24 +110,24 @@
    connection.
    If read-ch and write-ch are supplied, all data written and read are transfered to the supplied channels,
    If read-ch and write-ch aren't supplied, channels made by `(chan)` are used."
-  [factory pooled-connections idle-timeout-sec ^String host port read-ch write-ch]
+  [factory pooled-connections-ref idle-timeout-sec ^String host port read-ch write-ch]
   (let [pool-key (make-pool-key host port)
-        found    (locking pooled-connections
-                   (let [conns (get @pooled-connections pool-key)
-                         found (first conns)]
-                     (swap! pooled-connections update pool-key (fn [_] (vec (rest conns))))
-                     found))]
+        found    (dosync (let [conn-map (ensure pooled-connections-ref)
+                               conns (get conn-map pool-key)
+                               found (first conns)]
+                           (alter pooled-connections-ref update pool-key (fn [_] (vec (rest conns))))
+                           found))]
 
     (if found
       (do
         (log/trace (str "a pooled connection is found for: " pool-key ", found: " found))
         ;; returned connection don't have :pooled-connections key,
         ;; so we need to reassign it and create a new PooledConnection from the reassigned map.
-        (map->PooledConnection (assoc found :pooled-connections pooled-connections)))
+        (map->PooledConnection (assoc found :pooled-connections pooled-connections-ref)))
       (do
         (log/trace "no pooled connection is found. create a new one.")
         (let [{::client/keys [channel] :as new-conn}
-              (merge (->PooledConnection pooled-connections)
+              (merge (->PooledConnection pooled-connections-ref)
                     (client/connect factory host port read-ch write-ch)
                     {::host host
                      ::port port})]
@@ -144,7 +144,7 @@
             (addListener
               (reify ChannelFutureListener
                 (operationComplete [this f]
-                  (remove-from-pool pooled-connections new-conn)))))
+                  (remove-from-pool pooled-connections-ref new-conn)))))
 
           new-conn)))))
 
@@ -159,7 +159,7 @@
 
 (defn create-default-pool
   []
-  (atom {}))
+  (ref {}))
 
 (defn pooled-connection-factory
   ([factory pool idle-timeout-sec]
