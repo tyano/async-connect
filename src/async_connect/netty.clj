@@ -3,7 +3,7 @@
             [async-connect.netty.spec :as netty]
             [async-connect.message :as message]
             [clojure.tools.logging :as log]
-            [async-connect.box :refer [boxed] :as box]
+            [box.core :as box]
             [clojure.core.async :refer [>!! <!! >! <! thread close! go go-loop put!]])
   (:import [io.netty.buffer
               ByteBuf
@@ -57,19 +57,19 @@
 (defn default-channel-read
   [^ChannelHandlerContext ctx, ^Object msg, read-ch]
   (log/trace "channel read: " ctx)
-  (when-not (put! read-ch (boxed msg))
+  (when-not (put! read-ch (box/value msg))
     ;; the port is already closed. close a current context.
     (.close ctx)))
 
 (defn default-exception-caught
   [^ChannelHandlerContext ctx, ^Throwable th, read-ch]
   (log/trace "exception-caught: " ctx)
-  (put! read-ch (boxed th))
+  (put! read-ch (box/value th))
   (.close ctx))
 
 (defn bytebuf->bytes
   [data]
-  (box/update data
+  (box/map data
     (fn [^ByteBuf buf]
       (let [bytes (byte-array (.readableBytes buf))]
         (.readBytes buf bytes)
@@ -78,7 +78,7 @@
 
 (defn bytes->string
   [data]
-  (box/update data #(String. ^bytes %)))
+  (box/map data #(String. ^bytes %)))
 
 (defn string->bytes
   [msg]

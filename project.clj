@@ -1,4 +1,4 @@
-(defproject async-connect "0.2.1-SNAPSHOT"
+(defproject async-connect "0.2.2-SNAPSHOT"
   :description "A tcp/ip server/client implementations for Clojure with core.async"
   :url "https://github.com/tyano/async-connect"
   :license {:name "Eclipse Public License"
@@ -6,7 +6,8 @@
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [io.netty/netty-all "4.1.22.Final"]
                  [org.clojure/tools.logging "0.4.0"]
-                 [org.clojure/core.async "0.4.474"]]
+                 [org.clojure/core.async "0.4.474"]
+                 [box "0.1.0-SNAPSHOT"]]
 
   :profiles {:dev
              {:dependencies [[org.clojure/tools.namespace "0.2.11"]

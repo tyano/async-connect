@@ -13,7 +13,7 @@
                                          default-exception-caught] :as netty]
             [async-connect.netty.spec :as netty-spec]
             [async-connect.netty.handler :refer [make-inbound-handler make-outbound-handler] :as handler]
-            [async-connect.box :refer [boxed]])
+            [box.core :as box])
   (:import [io.netty.bootstrap
               Bootstrap]
            [io.netty.buffer
@@ -57,7 +57,7 @@
         (operationComplete
           [this f]
           (when-let [cause (.cause ^ChannelFuture f)]
-            (>!! read-ch (boxed cause))))))))
+            (>!! read-ch (box/value cause))))))))
 
 (defn make-default-promise
   [^ChannelHandlerContext ctx, read-ch]

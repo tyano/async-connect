@@ -10,8 +10,7 @@
                                          default-exception-caught]]
             [async-connect.netty.handler :refer [make-inbound-handler] :as handler]
             [async-connect.netty.spec :as netty-spec]
-            [async-connect.spec :as spec]
-            [async-connect.box :refer [boxed] :as box])
+            [async-connect.spec :as spec])
   (:import [java.net
               InetAddress
               Inet4Address
