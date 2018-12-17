@@ -7,7 +7,7 @@
                  [io.netty/netty-all "4.1.22.Final"]
                  [org.clojure/tools.logging "0.4.0"]
                  [org.clojure/core.async "0.4.474"]
-                 [box "0.1.0-SNAPSHOT"]]
+                 [box "0.1.0"]]
 
   :profiles {:dev
              {:dependencies [[org.clojure/tools.namespace "0.2.11"]
