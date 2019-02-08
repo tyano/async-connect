@@ -3,7 +3,7 @@
             [async-connect.netty.spec :as netty]
             [async-connect.message :as message]
             [clojure.tools.logging :as log]
-            [box.core :as box]
+            [databox.core :as box]
             [clojure.core.async :refer [>!! <!! >! <! thread close! go go-loop put!]])
   (:import [io.netty.buffer
               ByteBuf

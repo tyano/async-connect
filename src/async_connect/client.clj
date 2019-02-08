@@ -13,7 +13,7 @@
                                          default-exception-caught] :as netty]
             [async-connect.netty.spec :as netty-spec]
             [async-connect.netty.handler :refer [make-inbound-handler make-outbound-handler] :as handler]
-            [box.core :as box])
+            [databox.core :as box])
   (:import [io.netty.bootstrap
               Bootstrap]
            [io.netty.buffer
