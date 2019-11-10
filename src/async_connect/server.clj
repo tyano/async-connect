@@ -153,8 +153,8 @@
            ::worker-group
            ::shutdown-hook]
       :or {port 0
-           read-channel-builder #(chan)
-           write-channel-builder #(chan)
+           read-channel-builder  (fn [_] (chan))
+           write-channel-builder (fn [_] (chan))
            boss-group (NioEventLoopGroup.)
            worker-group (NioEventLoopGroup.)}
       :as config}]
